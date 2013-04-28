@@ -17,30 +17,35 @@
 package org.apache.flume.source;
 
 public class DirectorySyncSourceConfigurationConstants {
-    /** Directory to sync. */
-    public static final String SYNC_DIRECTORY = "syncDir";
+  /** Directory to sync. */
+  public static final String SYNC_DIRECTORY = "syncDir";
+  /**
+   * When a file is fully written and won't be changed in the future, there
+   * would be another file with the same name but having this suffix appended
+   * to
+   * it appeared in the same directory as the original file, to signal Flume to
+   * stop reading this file any longer.
+   */
+  public static final String END_FILE_SUFFIX = "endFileSuffix";
+  public static final String DEFAULT_END_FILE_SUFFIX = ".done";
+  /**
+   * Set the status files suffix while using
+   * {@link org.apache.flume.client.avro.ResumableFileReader}.
+   */
+  public static final String SYNCING_STATS_FILE_SUFFIX = "syncingStatsFileSuffix";
+  public static final String DEFAULT_SYNCING_STATS_FILE_SUFFIX = ".FLUME-STAT";
+  /** Suffix appended to files when they are finished being sent. */
+  /**
+   * Set the status file suffix's ending form while using {@link
+   * org.apache.flume.client.avro.ResumableFileReader}.
+   */
+  public static final String SYNCED_STATS_FILE_SUFFIX = "syncedStatsFileSuffix";
+  public static final String DEFAULT_SYNCED_STATS_FILE_SUFFIX = ".FLUME-COMPLETED";
 
-    /** Suffix appended to files when they are finished being sent. */
-    public static final String SYNCED_FILE_SUFFIX = "fileSuffix";
-    public static final String DEFAULT_SYNCED_FILE_SUFFIX = ".COMPLETED";
-
-    /** Header in which to put relative filename. */
-    public static final String FILENAME_HEADER_KEY = "fileHeaderKey";
-    public static final String DEFAULT_FILENAME_HEADER_KEY = "file";
-
-    /** Whether to include filename in a header. */
-    public static final String FILENAME_HEADER = "fileHeader";
-    public static final boolean DEFAULT_FILE_HEADER = false;
-
-    /** What size to batch with before sending to ChannelProcessor. */
-    public static final String BATCH_SIZE = "batchSize";
-    public static final int DEFAULT_BATCH_SIZE = 10;
-
-    /** Maximum number of lines to buffer between commits. */
-    public static final String BUFFER_MAX_LINES = "bufferMaxLines";
-    public static final int DEFAULT_BUFFER_MAX_LINES = 100;
-
-    /** Maximum length of line (in characters) in buffer between commits. */
-    public static final String BUFFER_MAX_LINE_LENGTH = "bufferMaxLineLength";
-    public static final int DEFAULT_BUFFER_MAX_LINE_LENGTH = 5000;
+  /** Header in which to put relative filename. */
+  public static final String FILENAME_HEADER_KEY = "fileHeaderKey";
+  public static final String DEFAULT_FILENAME_HEADER_KEY = "file";
+  /** What size to batch with before sending to ChannelProcessor. */
+  public static final String BATCH_SIZE = "batchSize";
+  public static final int DEFAULT_BATCH_SIZE = 10;
 }
