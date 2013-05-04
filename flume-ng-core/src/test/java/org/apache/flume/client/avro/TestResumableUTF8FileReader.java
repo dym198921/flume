@@ -40,7 +40,8 @@ public class TestResumableUTF8FileReader {
 
   @After
   public void tearDown() throws Exception {
-
+    Files.delete(srcFile);
+    Files.delete(srcFile );
   }
 
   @Test
