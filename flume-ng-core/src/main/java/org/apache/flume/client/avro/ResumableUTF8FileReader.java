@@ -196,9 +196,12 @@ public class ResumableUTF8FileReader extends Reader {
 
   public void close() throws IOException {
     logger.debug("file '{}': closing...", file);
-    decoder.reset();
-    ch.close();
-    statsFileOut.close();
+    if (null != decoder)
+      decoder.reset();
+    if (null != ch)
+      ch.close();
+    if (null != statsFileOut)
+      statsFileOut.close();
     logger.debug("file '{}': closed", file);
   }
 
@@ -207,10 +210,11 @@ public class ResumableUTF8FileReader extends Reader {
     if (finished || damaged) return;
 
     logger.debug("committing '{}'", statsFile);
+    statsFileOut.getChannel().position(0);
     statsFileOut.write(String.valueOf(readingPosition).getBytes());
     statsFileOut.flush();
     logger.debug("'{}': written", statsFile);
-    if (fileEnded) {
+    if (fileEnded && eof) {
       logger.debug("sealing stats file, renaming from '{}' to '{}'",
           statsFile, finishedStatsFile);
       statsFileOut.close();
@@ -373,7 +377,7 @@ public class ResumableUTF8FileReader extends Reader {
 
       while (sp < sl) {
         int b1 = sa[sp];
-        if(b1 < 0 && skipLF) {
+        if (b1 < 0 && skipLF) {
           // stop processing when previous line ends with '\r'
           skipLF = false;
           if (dp >= dlASCII)
@@ -475,7 +479,7 @@ public class ResumableUTF8FileReader extends Reader {
       while (mark < limit) {
         int b1 = src.get();
 
-        if(b1 < 0 && skipLF) {
+        if (b1 < 0 && skipLF) {
           // stop processing when previous line ends with '\r'
           skipLF = false;
           if (dst.remaining() < 1)
