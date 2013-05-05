@@ -239,25 +239,19 @@ public class DirectorySyncFileLineReader implements LineReader {
         throw new IllegalStateException(e);
       }
     }
-    if (!fileIterator.hasNext())
-      return Optional.absent();
 
     Path nextFile;
-    boolean noMoreReading;
     boolean fileEnded;
+    if (!fileIterator.hasNext())
+      return Optional.absent();
     /* checking file's reading progress, skip if needed */
-    do {
-      nextFile = fileIterator.next();
-      noMoreReading = Files.exists(Paths.get(nextFile + finishedStatsFileSuffix));
-      fileEnded = Files.exists(Paths.get(nextFile + endFileSuffix));
-      if (!noMoreReading) break;
-    } while (fileIterator.hasNext());
+    nextFile = fileIterator.next();
+    fileEnded = Files.exists(Paths.get(nextFile + endFileSuffix));
 
     logger.debug("opening new file: {} ...", nextFile);
     try {
       ResumableUTF8FileReader file = new ResumableUTF8FileReader(nextFile, fileEnded,
           statsFileSuffix, finishedStatsFileSuffix);
-      logger.debug("file: {} opened", nextFile);
       return Optional.of(file);
     } catch (IOException e) {
       disabled = true;
