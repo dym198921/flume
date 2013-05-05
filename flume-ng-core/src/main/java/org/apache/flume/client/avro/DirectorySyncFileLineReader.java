@@ -32,7 +32,6 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.Collections;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 
 import static java.nio.file.Files.createTempFile;
@@ -137,34 +136,31 @@ public class DirectorySyncFileLineReader implements LineReader {
     if (!committed) {
       if (!currentFile.isPresent()) {
         throw new IllegalStateException("File should not roll when " +
-            " commit is outstanding.");
+            "commit is outstanding.");
       }
       logger.info("Last read was never committed - resetting mark position.");
       currentFile.get().reset();
-    } else {
-      // Check if new files have arrived since last call
-      if (!currentFile.isPresent()) {
-        currentFile = getNextFile();
-      }
-      // Return empty list if no new files
-      if (!currentFile.isPresent()) {
-        return Collections.emptyList();
-      }
     }
 
-    String outLine = currentFile.get().readLine();
+    // Check if new files have arrived since last call
+    if (!currentFile.isPresent()) {
+      currentFile = getNextFile();
+    }
+    // Return empty list if no new files
+    if (!currentFile.isPresent()) {
+      return Collections.emptyList();
+    }
 
     /* It's possible that the last read took us just up to a file boundary.
      * If so, try to roll to the next file, if there is one. */
-    if (outLine == null) {
+    String outLine;
+    while ((outLine = currentFile.get().readLine()) == null){
       retireCurrentFile();
       currentFile = getNextFile();
       if (!currentFile.isPresent()) {
         return Collections.emptyList();
       }
-      outLine = currentFile.get().readLine();
     }
-
     List<String> out = Lists.newArrayList();
     while (outLine != null) {
       out.add(outLine);
@@ -193,10 +189,9 @@ public class DirectorySyncFileLineReader implements LineReader {
   private void retireCurrentFile() throws IOException {
     Preconditions.checkState(currentFile.isPresent());
 
-    logger.info("file '{}': committing stats and closing...",
+    logger.info("file '{}': retiring...",
         currentFile.get().getFile());
     currentFile.get().close();
-    logger.info("file '{}': closed", currentFile.get().getFile());
   }
 
   @Override
@@ -248,7 +243,7 @@ public class DirectorySyncFileLineReader implements LineReader {
     nextFile = fileIterator.next();
     fileEnded = Files.exists(Paths.get(nextFile + endFileSuffix));
 
-    logger.debug("opening new file: {} ...", nextFile);
+    logger.debug("treating next file: {}", nextFile);
     try {
       ResumableUTF8FileReader file = new ResumableUTF8FileReader(nextFile, fileEnded,
           statsFileSuffix, finishedStatsFileSuffix);
