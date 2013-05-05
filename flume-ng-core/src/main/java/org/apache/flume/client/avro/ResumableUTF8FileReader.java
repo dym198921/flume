@@ -147,8 +147,6 @@ public class ResumableUTF8FileReader extends Reader {
         if (!cb.hasRemaining())
           break;
         if (!bb.hasRemaining()) {
-          bb.clear();
-        } else {
           bb.compact();
         }
         int n = ch.read(bb);
