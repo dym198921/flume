@@ -18,7 +18,7 @@ package org.apache.flume.source;
 
 public class DirectorySyncSourceConfigurationConstants {
   /** Directory to sync. */
-  public static final String SYNC_DIRECTORY = "syncDir";
+  public static final String SYNC_DIRECTORY = "dir";
   /**
    * When a file is fully written and won't be changed in the future, there
    * would be another file with the same name but having this suffix appended
@@ -30,14 +30,14 @@ public class DirectorySyncSourceConfigurationConstants {
   public static final String DEFAULT_END_FILE_SUFFIX = ".done";
   /**
    * Set the status files suffix while using
-   * {@link org.apache.flume.client.avro.ResumableFileReader}.
+   * {@link org.apache.flume.client.avro.ResumableUTF8FileReader}.
    */
   public static final String SYNCING_STATS_FILE_SUFFIX = "syncingStatsFileSuffix";
-  public static final String DEFAULT_SYNCING_STATS_FILE_SUFFIX = ".FLUME-STAT";
+  public static final String DEFAULT_SYNCING_STATS_FILE_SUFFIX = ".FLUME-INCOMPLETE";
   /** Suffix appended to files when they are finished being sent. */
   /**
    * Set the status file suffix's ending form while using {@link
-   * org.apache.flume.client.avro.ResumableFileReader}.
+   * org.apache.flume.client.avro.ResumableUTF8FileReader}.
    */
   public static final String SYNCED_STATS_FILE_SUFFIX = "syncedStatsFileSuffix";
   public static final String DEFAULT_SYNCED_STATS_FILE_SUFFIX = ".FLUME-COMPLETED";
