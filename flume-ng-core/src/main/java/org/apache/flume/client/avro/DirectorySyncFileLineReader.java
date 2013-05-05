@@ -52,7 +52,6 @@ public class DirectorySyncFileLineReader implements LineReader {
   private DirectoryStream<Path> directoryStream;
   private Iterator<Path> fileIterator;
   private Optional<ResumableUTF8FileReader> currentFile = Optional.absent();
-  private List<ResumableUTF8FileReader> previousFiles;
   /** Always contains the last file from which lines have been read. * */
   private Optional<ResumableUTF8FileReader> lastFileRead = Optional.absent();
   private boolean committed = true;
@@ -93,7 +92,18 @@ public class DirectorySyncFileLineReader implements LineReader {
     this.statsFileSuffix = statsFileSuffix;
     this.finishedStatsFileSuffix = finishedStatsFileSuffix;
     try {
-      this.directoryStream = Files.newDirectoryStream(directory);
+      DirectoryStream.Filter<Path> filter = new DirectoryStream.Filter<Path>() {
+        @Override
+        public boolean accept(Path entry) throws IOException {
+          String fileStr = entry.toString();
+          if (fileStr.endsWith(endFileSuffix) ||
+              fileStr.endsWith(statsFileSuffix) ||
+              fileStr.endsWith(finishedStatsFileSuffix))
+            return false;
+          return true;
+        }
+      };
+      this.directoryStream = Files.newDirectoryStream(directory, filter);
       this.fileIterator = this.directoryStream.iterator();
     } catch (IOException e) {
       logger.error("unable to start reading from directory '{}'", directory);
