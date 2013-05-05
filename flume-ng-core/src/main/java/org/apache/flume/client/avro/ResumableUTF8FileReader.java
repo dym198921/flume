@@ -88,7 +88,7 @@ public class ResumableUTF8FileReader extends Reader {
     logger.debug("retrieving status for file '{}'", file);
     finished = Files.exists(finishedStatsFile);
     if (finished) {
-      logger.debug("found stats file: '{}', no more reading needed", statsFile);
+      logger.debug("found stats file: '{}', no more reading needed", finishedStatsFile);
       return;
     }
     if (Files.exists(statsFile)) {
