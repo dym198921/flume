@@ -110,15 +110,6 @@ public class ResumableUTF8FileReader extends Reader {
         throw e;
       }
     }
-
-    /* open stat file for write */
-    try {
-      statsFileOut = new FileOutputStream(statsFile.toFile(), false);
-    } catch (IOException ioe) {
-      damaged = true;
-      throw new IOException("cannot create stats file for log file '" + file +
-          "', this class needs stats file to function normally", ioe);
-    }
     logger.debug("opened stats file '{}', got line number '{}'", statsFile, markedPosition);
   }
 
@@ -210,6 +201,15 @@ public class ResumableUTF8FileReader extends Reader {
     if (finished || damaged) return;
 
     logger.debug("committing '{}'", statsFile);
+    /* open stat file for write */
+    try {
+      if (null == statsFileOut)
+        statsFileOut = new FileOutputStream(statsFile.toFile(), false);
+    } catch (IOException ioe) {
+      damaged = true;
+      throw new IOException("cannot create stats file for log file '" + file +
+          "', this class needs stats file to function normally", ioe);
+    }
     statsFileOut.getChannel().position(0);
     statsFileOut.write(String.valueOf(readingPosition).getBytes());
     statsFileOut.flush();
