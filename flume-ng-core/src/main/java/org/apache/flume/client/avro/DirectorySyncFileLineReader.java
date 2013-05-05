@@ -50,9 +50,11 @@ public class DirectorySyncFileLineReader implements LineReader {
   private String statsFileSuffix;
   private String finishedStatsFileSuffix;
   private DirectoryStream<Path> directoryStream;
-  private Optional<ResumableFileReader> currentFile = Optional.absent();
+  private Iterator<Path> fileIterator;
+  private Optional<ResumableUTF8FileReader> currentFile = Optional.absent();
+  private List<ResumableUTF8FileReader> previousFiles;
   /** Always contains the last file from which lines have been read. * */
-  private Optional<ResumableFileReader> lastFileRead = Optional.absent();
+  private Optional<ResumableUTF8FileReader> lastFileRead = Optional.absent();
   private boolean committed = true;
   /** A flag to signal an un-recoverable error has occured. */
   private boolean disabled = false;
@@ -92,6 +94,7 @@ public class DirectorySyncFileLineReader implements LineReader {
     this.finishedStatsFileSuffix = finishedStatsFileSuffix;
     try {
       this.directoryStream = Files.newDirectoryStream(directory);
+      this.fileIterator = this.directoryStream.iterator();
     } catch (IOException e) {
       logger.error("unable to start reading from directory '{}'", directory);
       throw new IllegalStateException(e);
@@ -124,12 +127,11 @@ public class DirectorySyncFileLineReader implements LineReader {
     if (disabled) {
       throw new IllegalStateException("Reader has been disabled.");
     }
-    this.currentFile.get().readLine();
-    List<String> read = readLines(1);
-    if (read.size() == 0) {
+    List<String> lines = readLines(1);
+    if (lines.size() == 0) {
       return null;
     }
-    return read.get(0);
+    return lines.get(0);
   }
 
   @Override
@@ -196,17 +198,19 @@ public class DirectorySyncFileLineReader implements LineReader {
   private void retireCurrentFile() throws IOException {
     Preconditions.checkState(currentFile.isPresent());
 
-    logger.info("file '{}': preparing to mark it as completed...",
+    logger.info("file '{}': committing stats and closing...",
         currentFile.get().getFile());
     currentFile.get().commit();
     currentFile.get().close();
-    logger.info("file '{}': marked as completed");
+    logger.info("file '{}': closed", currentFile.get().getFile());
   }
 
   @Override
   public void close() throws IOException {
-    this.currentFile.get().close();
-    this.directoryStream.close();
+    if (currentFile.isPresent())
+      currentFile.get().close();
+    if (null != directoryStream)
+      directoryStream.close();
   }
 
   /**
@@ -214,8 +218,7 @@ public class DirectorySyncFileLineReader implements LineReader {
    *
    * @return the next file
    */
-  private Optional<ResumableFileReader> getNextFile() {
-    Iterator<Path> fileIterator = this.directoryStream.iterator();
+  private Optional<ResumableUTF8FileReader> getNextFile() {
     if (!fileIterator.hasNext()) return Optional.absent();
 
     Path nextFile;
@@ -226,15 +229,17 @@ public class DirectorySyncFileLineReader implements LineReader {
       nextFile = fileIterator.next();
       noMoreReading = Files.exists(Paths.get(nextFile + finishedStatsFileSuffix));
       fileEnded = Files.exists(Paths.get(nextFile + endFileSuffix));
-    } while (!noMoreReading);
+      if (!noMoreReading) break;
+    } while (fileIterator.hasNext());
 
     logger.debug("opening new file: {} ...", nextFile);
     try {
-      ResumableFileReader file = new ResumableFileReader(nextFile, fileEnded,
+      ResumableUTF8FileReader file = new ResumableUTF8FileReader(nextFile, fileEnded,
           statsFileSuffix, finishedStatsFileSuffix);
       logger.debug("file: {} opened", nextFile);
       return Optional.of(file);
     } catch (IOException e) {
+      disabled = true;
       logger.error("Exception opening file: " + nextFile, e);
       return Optional.absent();
     }

@@ -16,40 +16,41 @@
 
 package org.apache.flume.client.avro;
 
+import junit.framework.Assert;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.LinkedList;
+import java.util.List;
 
 public class TestDirectorySyncFileLineReader {
   private Logger logger = LoggerFactory.getLogger
       (TestDirectorySyncFileLineReader.class);
-  private Path tmpDir;
+  private Path tmpDir1;
 
   @Before
   public void setUp() throws Exception {
-    tmpDir = Files.createTempDirectory(null);
-    logger.trace("temporary directory created: {}", tmpDir.toAbsolutePath());
+    tmpDir1 = Files.createTempDirectory(null);
+    logger.trace("temporary directory created: {}", tmpDir1.toAbsolutePath());
   }
 
   @After
   public void tearDown() throws Exception {
     // clean up temporary files
-    logger.trace("cleaning up temp dir: {}", tmpDir.toAbsolutePath());
-    Files.walkFileTree(tmpDir, new SimpleFileVisitor<Path>() {
+    logger.trace("cleaning up temp dir: {}", tmpDir1.toAbsolutePath());
+    Files.walkFileTree(tmpDir1, new SimpleFileVisitor<Path>() {
       @Override
       public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
           throws IOException {
@@ -67,64 +68,51 @@ public class TestDirectorySyncFileLineReader {
   }
 
   @Test
-  public void testFileReaderByteCount() {
-    Path testSourceFile = tmpDir.resolve("testBufferedReader.file");
+  public void testEmptyDirectory() throws IOException {
+    DirectorySyncFileLineReader reader = new DirectorySyncFileLineReader(tmpDir1,
+        ".done", ".FLUME-INCOMPLETE", ".FLUME-COMPLETED");
+    String line = reader.readLine();
+    Assert.assertNull(line);
+    reader.close();
+  }
 
-    try {
-      // generate source file
-      Charset charset = Charset.forName("UTF-8");
-      BufferedWriter writer = Files.newBufferedWriter(testSourceFile, charset);
-      String line1 = "line1\r";
-      String line2 = "line2 line2中文\r\n";
-      String line3 = "line3 line3 中文 line3\n";
-      writer.append(line1);
-      writer.append(line2);
-      writer.append(line3);
-      writer.close();
+  @Test
+  public void testDirectorySync() throws IOException {
+    Path file1 = Paths.get(tmpDir1.resolve("file1").toString());
+    Path file2 = Paths.get(tmpDir1.resolve("file2").toString());
+    List<String> lines = new LinkedList<String>();
+    lines.add("line1\n");
+    lines.add("line_2\r\n");
+    lines.add("line__3\r");
+    lines.add("line__4\r\n");
+    lines.add("line_5\r");
+    lines.add("line6");
 
-      // initiate reader
-      FileInputStream in = new FileInputStream(testSourceFile.toFile());
-      InputStreamReader ir = new InputStreamReader(in, Charset.defaultCharset
-          ());
-      BufferedReader reader = new BufferedReader(ir, 1);
-      long pos = 0;
-      // read out a new lines and mark position
-      String line;
-      line = reader.readLine();
-      pos += line.getBytes().length + 1;
-      line = reader.readLine();
-      pos += line.getBytes().length + 1;
-      // next non-empty line is out target
-      for (; ; ) {
-        line = reader.readLine();
-        if (line.length() > 0)
-          break;
-      }
-      logger.debug("one line read, pos: {} \"{}\"", pos, line);
-      reader.close();
-      in.close();
+    BufferedWriter writer = Files.newBufferedWriter(file1, Charset.forName("UTF-8"));
+    for (String line : lines) {
+      writer.write(line);
+    }
+    writer.close();
+    writer = Files.newBufferedWriter(file2, Charset.forName("UTF-8"));
+    for (String line : lines) {
+      writer.write(line);
+    }
+    writer.close();
+    //Files.createFile(Paths.get(file1 + ".done"));
+    //Files.createFile(Paths.get(file2 + ".done"));
 
-      in = new FileInputStream(testSourceFile.toFile());
-      reader = new BufferedReader(new InputStreamReader(in,
-          Charset.defaultCharset()), 1);
-      // fast forward and test the line
-      in.getChannel().position(pos);
-      String newLine;
-      for (; ; ) {
-        newLine = reader.readLine();
-        if (newLine.length() > 0)
-          break;
-      }
-      logger.debug("resume to previous position with {} bytes skipped: {}",
-          pos, newLine);
-      reader.close();
-      in.close();
+    DirectorySyncFileLineReader reader = new DirectorySyncFileLineReader(tmpDir1,
+        ".done", ".FLUME-INCOMPLETE", ".FLUME-COMPLETED");
+    List<String> exactLines = new LinkedList<String>();
+    String line;
+    while ((line = reader.readLine()) != null) {
+      exactLines.add(line);
+      reader.commit();
+    }
+    reader.close();
 
-      logger.trace("comparing two lines:\n {}\n {}", line, newLine);
-      org.junit.Assert.assertEquals("failure - strings not equal", line,
-          newLine);
-    } catch (IOException e) {
-      logger.error("", e);
+    for (int i = 0; i < exactLines.size(); i++) {
+      Assert.assertEquals(lines.get(i % 6).replaceAll("\r", "").replaceAll("\n", ""),exactLines.get(i));
     }
   }
 }
