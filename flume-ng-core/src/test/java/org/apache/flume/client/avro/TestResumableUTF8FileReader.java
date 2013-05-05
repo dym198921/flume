@@ -41,7 +41,6 @@ public class TestResumableUTF8FileReader {
   @After
   public void tearDown() throws Exception {
     Files.delete(srcFile);
-    Files.delete(srcFile );
   }
 
   @Test
@@ -86,10 +85,10 @@ public class TestResumableUTF8FileReader {
     }
 
     // test End of File sealing
-    Path sealingFile = Paths.get(srcFile + ".done");
-    Files.createFile(sealingFile);
     ResumableUTF8FileReader reader = new ResumableUTF8FileReader(srcFile, true,
         ".FLUME-STATS", ".FLUME-COMPLETED");
+    while (reader.readLine() != null)
+      continue;
     reader.commit();
     reader.close();
     Assert.assertTrue(Files.exists(Paths.get(srcFile + ".FLUME-COMPLETED")));
