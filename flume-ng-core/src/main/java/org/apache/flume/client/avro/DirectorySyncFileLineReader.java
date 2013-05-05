@@ -32,6 +32,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 
 import static java.nio.file.Files.createTempFile;
@@ -194,7 +195,6 @@ public class DirectorySyncFileLineReader implements LineReader {
 
     logger.info("file '{}': committing stats and closing...",
         currentFile.get().getFile());
-    currentFile.get().commit();
     currentFile.get().close();
     logger.info("file '{}': closed", currentFile.get().getFile());
   }
