@@ -46,6 +46,7 @@ import static java.nio.file.Files.createTempFile;
 public class DirectorySyncFileLineReader implements LineReader {
   private static final Logger logger = LoggerFactory.getLogger(
       DirectorySyncFileLineReader.class);
+  private Path directory;
   private String endFileSuffix;
   private String statsFileSuffix;
   private String finishedStatsFileSuffix;
@@ -76,6 +77,7 @@ public class DirectorySyncFileLineReader implements LineReader {
         "Directory does not exist: " + directory.toAbsolutePath());
     Preconditions.checkState(Files.isDirectory(directory),
         "Path is not a directory: " + directory.toAbsolutePath());
+    this.directory = directory;
 
     // Do a canary test to make sure we have access to test syncDirectory
     try {
@@ -91,24 +93,6 @@ public class DirectorySyncFileLineReader implements LineReader {
     this.endFileSuffix = endFileSuffix;
     this.statsFileSuffix = statsFileSuffix;
     this.finishedStatsFileSuffix = finishedStatsFileSuffix;
-    try {
-      DirectoryStream.Filter<Path> filter = new DirectoryStream.Filter<Path>() {
-        @Override
-        public boolean accept(Path entry) throws IOException {
-          String fileStr = entry.toString();
-          if (fileStr.endsWith(endFileSuffix) ||
-              fileStr.endsWith(statsFileSuffix) ||
-              fileStr.endsWith(finishedStatsFileSuffix))
-            return false;
-          return true;
-        }
-      };
-      this.directoryStream = Files.newDirectoryStream(directory, filter);
-      this.fileIterator = this.directoryStream.iterator();
-    } catch (IOException e) {
-      logger.error("unable to start reading from directory '{}'", directory);
-      throw new IllegalStateException(e);
-    }
   }
 
   /**
@@ -228,8 +212,35 @@ public class DirectorySyncFileLineReader implements LineReader {
    *
    * @return the next file
    */
-  private Optional<ResumableUTF8FileReader> getNextFile() {
-    if (!fileIterator.hasNext()) return Optional.absent();
+  private Optional<ResumableUTF8FileReader> getNextFile() throws IOException {
+    if (null != directoryStream && !fileIterator.hasNext()) {
+      directoryStream.close();
+      directoryStream = null;
+      fileIterator = null;
+      return Optional.absent();
+    }
+    if (null == directoryStream) {
+      try {
+        DirectoryStream.Filter<Path> filter = new DirectoryStream.Filter<Path>() {
+          @Override
+          public boolean accept(Path entry) throws IOException {
+            String fileStr = entry.toString();
+            if (fileStr.endsWith(endFileSuffix) ||
+                fileStr.endsWith(statsFileSuffix) ||
+                fileStr.endsWith(finishedStatsFileSuffix))
+              return false;
+            return true;
+          }
+        };
+        directoryStream = Files.newDirectoryStream(directory, filter);
+        fileIterator = directoryStream.iterator();
+      } catch (IOException e) {
+        logger.error("unable to start reading from directory '{}'", directory);
+        throw new IllegalStateException(e);
+      }
+    }
+    if (!fileIterator.hasNext())
+      return Optional.absent();
 
     Path nextFile;
     boolean noMoreReading;
