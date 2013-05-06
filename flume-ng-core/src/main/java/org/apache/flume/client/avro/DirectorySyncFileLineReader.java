@@ -25,11 +25,14 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.nio.file.DirectoryStream;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -50,8 +53,8 @@ public class DirectorySyncFileLineReader implements LineReader {
   private String endFileSuffix;
   private String statsFileSuffix;
   private String finishedStatsFileSuffix;
-  private DirectoryStream<Path> directoryStream;
-  private Iterator<Path> fileIterator;
+  private List<Path> files = new ArrayList<Path>();
+  private Iterator<Path> filesIterator;
   private Optional<ResumableUTF8FileReader> currentFile = Optional.absent();
   /** Always contains the last file from which lines have been read. * */
   private Optional<ResumableUTF8FileReader> lastFileRead = Optional.absent();
@@ -154,7 +157,7 @@ public class DirectorySyncFileLineReader implements LineReader {
     /* It's possible that the last read took us just up to a file boundary.
      * If so, try to roll to the next file, if there is one. */
     String outLine;
-    while ((outLine = currentFile.get().readLine()) == null){
+    while ((outLine = currentFile.get().readLine()) == null) {
       retireCurrentFile();
       currentFile = getNextFile();
       if (!currentFile.isPresent()) {
@@ -198,8 +201,8 @@ public class DirectorySyncFileLineReader implements LineReader {
   public void close() throws IOException {
     if (currentFile.isPresent())
       currentFile.get().close();
-    if (null != directoryStream)
-      directoryStream.close();
+    if (null != files)
+      files.clear();
   }
 
   /**
@@ -208,28 +211,28 @@ public class DirectorySyncFileLineReader implements LineReader {
    * @return the next file
    */
   private Optional<ResumableUTF8FileReader> getNextFile() throws IOException {
-    if (null != directoryStream && !fileIterator.hasNext()) {
-      directoryStream.close();
-      directoryStream = null;
-      fileIterator = null;
+    if (null != filesIterator && !filesIterator.hasNext()) {
+      filesIterator = null;
+      files.clear();
       return Optional.absent();
     }
-    if (null == directoryStream) {
+    if (null == filesIterator) {
       try {
-        DirectoryStream.Filter<Path> filter = new DirectoryStream.Filter<Path>() {
+        Files.walkFileTree(directory, new SimpleFileVisitor<Path>() {
           @Override
-          public boolean accept(Path entry) throws IOException {
-            String fileStr = entry.toString();
-            if (Files.isDirectory(entry) ||
-                fileStr.endsWith(endFileSuffix) ||
-                fileStr.endsWith(statsFileSuffix) ||
-                fileStr.endsWith(finishedStatsFileSuffix))
-              return false;
-            return true;
+          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+            if (attrs.isRegularFile()) {
+              String fileStr = file.toString();
+              if (!(fileStr.endsWith(endFileSuffix) ||
+                  fileStr.endsWith(statsFileSuffix) ||
+                  fileStr.endsWith(finishedStatsFileSuffix))) {
+                files.add(file);
+              }
+            }
+            return FileVisitResult.CONTINUE;
           }
-        };
-        directoryStream = Files.newDirectoryStream(directory, filter);
-        fileIterator = directoryStream.iterator();
+        });
+        filesIterator = files.iterator();
       } catch (IOException e) {
         logger.error("unable to start reading from directory '{}'", directory);
         throw new IllegalStateException(e);
@@ -238,10 +241,10 @@ public class DirectorySyncFileLineReader implements LineReader {
 
     Path nextFile;
     boolean fileEnded;
-    if (!fileIterator.hasNext())
+    if (!filesIterator.hasNext())
       return Optional.absent();
     /* checking file's reading progress, skip if needed */
-    nextFile = fileIterator.next();
+    nextFile = filesIterator.next();
     fileEnded = Files.exists(Paths.get(nextFile + endFileSuffix));
 
     logger.debug("treating next file: {}", nextFile);
