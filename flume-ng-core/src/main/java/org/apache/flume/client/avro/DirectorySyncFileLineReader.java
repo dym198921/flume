@@ -28,7 +28,6 @@ import java.nio.charset.Charset;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -193,6 +192,7 @@ public class DirectorySyncFileLineReader implements LineReader {
 
     logger.info("file '{}': retiring...",
         currentFile.get().getFile());
+    currentFile.get().commit();
     currentFile.get().close();
   }
 
@@ -242,9 +242,10 @@ public class DirectorySyncFileLineReader implements LineReader {
     boolean fileEnded;
     /* checking file's reading progress, skip if needed */
     nextFile = filesIterator.next();
-    fileEnded = Files.exists(Paths.get(nextFile + endFileSuffix));
-
     logger.debug("treating next file: {}", nextFile);
+    fileEnded = Files.exists(
+        nextFile.resolveSibling(nextFile.getFileName() + endFileSuffix));
+    logger.debug("file {} marked as ended", nextFile);
     try {
       ResumableUTF8FileReader file = new ResumableUTF8FileReader(nextFile, fileEnded,
           statsFileSuffix, finishedStatsFileSuffix);

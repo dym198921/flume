@@ -78,8 +78,8 @@ public class ResumableUTF8FileReader extends Reader {
     this.fileEnded = fileEnded;
 
     /* stats file */
-    statsFile = Paths.get(file + statsFileSuffix);
-    finishedStatsFile = Paths.get(file + finishedStatsFileSuffix);
+    statsFile = file.resolveSibling(file.getFileName() + statsFileSuffix);
+    finishedStatsFile = file.resolveSibling(file.getFileName() + finishedStatsFileSuffix);
 
     /* get previous line position */
     retrieveStats();
