@@ -95,31 +95,41 @@ public class DirectorySyncSink extends AbstractSink implements Configurable {
       for (int i = 0; i < batchSize; i++) {
         event = channel.take();
         if (event != null) {
-          sinkCounter.incrementEventDrainAttemptCount();
-          eventAttemptCounter++;
           Map<String, String> headers = event.getHeaders();
           String eventFileStr = headers.get(
               DirectorySyncSourceConfigurationConstants.DEFAULT_FILENAME_HEADER_KEY);
-          Path eventFile = Paths.get(eventFileStr);
-          if (!eventFile.equals(cachedFile)) {
-            cachedFile = eventFile;
-            if (null != cachedOutputStream)
-              cachedOutputStream.close();
-            logger.debug("creating new OutputStream for file {}", eventFileStr);
-            cachedOutputStream = Files.newOutputStream(eventFile,
-                StandardOpenOption.APPEND);
-            cachedSerializer = EventSerializerFactory.getInstance(
-                serializerType, serializerContext, cachedOutputStream);
+          try {
+            Path eventFile = directory.resolve(eventFileStr);
+            Files.createDirectories(eventFile.getParent());
+            if (!eventFile.equals(cachedFile)) {
+              cachedFile = eventFile;
+              if (null != cachedOutputStream)
+                cachedOutputStream.close();
+              logger.debug("creating new OutputStream for file {}", eventFileStr);
+              cachedOutputStream = Files.newOutputStream(eventFile,
+                  StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+              cachedSerializer = EventSerializerFactory.getInstance(
+                  serializerType, serializerContext, cachedOutputStream);
+              cachedSerializer.afterCreate();
+              sinkCounter.incrementConnectionCreatedCount();
+            }
+          } catch (IOException e) {
+            sinkCounter.incrementConnectionFailedCount();
+            throw new EventDeliveryException("Failed to open file "
+                + eventFileStr + " while delivering event", e);
           }
+
+          sinkCounter.incrementEventDrainAttemptCount();
+          eventAttemptCounter++;
           cachedSerializer.write(event);
+          cachedSerializer.flush();
+          cachedOutputStream.flush();
         } else {
           // No events found, request back-off semantics from runner
           result = Status.BACKOFF;
           break;
         }
       }
-      cachedSerializer.flush();
-      cachedOutputStream.flush();
       transaction.commit();
       sinkCounter.addToEventDrainSuccessCount(eventAttemptCounter);
     } catch (Exception ex) {
