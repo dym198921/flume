@@ -241,6 +241,8 @@ public class DirectorySyncFileLineReader implements LineReader {
 
     Path nextFile;
     boolean fileEnded;
+    if (!filesIterator.hasNext())
+      return Optional.absent();
     /* checking file's reading progress, skip if needed */
     nextFile = filesIterator.next();
     logger.debug("treating next file: {}", nextFile);
