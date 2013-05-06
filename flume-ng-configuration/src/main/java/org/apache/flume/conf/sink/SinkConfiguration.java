@@ -101,7 +101,7 @@ public class SinkConfiguration extends ComponentConfiguration {
      *
      * @see DirectorySyncSink
      */
-    FILE_ROLL("org.apache.flume.conf.sink.DirectorySyncSinkConfiguration"),
+    SYNCDIR("org.apache.flume.conf.sink.DirectorySyncSinkConfiguration"),
 
     /**
      * HDFS Sink provided by org.apache.flume.sink.hdfs.HDFSEventSink
