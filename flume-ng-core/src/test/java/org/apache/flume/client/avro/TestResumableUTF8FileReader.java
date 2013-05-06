@@ -46,9 +46,11 @@ public class TestResumableUTF8FileReader {
   @Test
   public void testFileReading() throws IOException {
     List<String> lines = new LinkedList<String>();
-    lines.add("line1\n");
+    lines.add("line1\r");
     lines.add("line_2\r\n");
-    lines.add("line__3\r");
+    lines.add("line__3\n");
+    lines.add("\n");
+    lines.add("\n");
     lines.add("line__4\r\n");
     lines.add("line_5\r");
     lines.add("line6\n");
