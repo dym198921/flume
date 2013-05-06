@@ -50,6 +50,13 @@ public enum SinkType {
   FILE_ROLL("org.apache.flume.sink.RollingFileSink"),
 
   /**
+   * Directory Sync Sink
+   *
+   * @see DirectorySyncSink
+   */
+  SYNCDIR("org.apache.flume.sink.DirectorySyncSink"),
+
+  /**
    * HDFS Sink provided by org.apache.flume.sink.hdfs.HDFSEventSink
    */
   HDFS("org.apache.flume.sink.hdfs.HDFSEventSink"),
