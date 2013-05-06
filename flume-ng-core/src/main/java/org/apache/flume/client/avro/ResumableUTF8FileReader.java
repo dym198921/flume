@@ -152,9 +152,9 @@ public class ResumableUTF8FileReader extends Reader {
           bb.compact();
         }
         int n = ch.read(bb);
-        bb.flip();
         if (n < 0)
           eof = true;
+        bb.flip();
         continue;
       }
       if (cr.isOverflow()) {
@@ -177,7 +177,7 @@ public class ResumableUTF8FileReader extends Reader {
     }
 
     cb.flip();
-    if (cb.length() == 0)
+    if (eof && !bb.hasRemaining() && cb.length() == 0)
       return null;
     sb.append(cb);
     cb.clear();
