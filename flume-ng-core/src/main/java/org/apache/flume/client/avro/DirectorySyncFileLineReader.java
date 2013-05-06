@@ -143,6 +143,7 @@ public class DirectorySyncFileLineReader implements LineReader {
       }
       logger.info("Last read was never committed - resetting mark position.");
       currentFile.get().reset();
+      committed = true;
     }
 
     // Check if new files have arrived since last call
@@ -179,8 +180,6 @@ public class DirectorySyncFileLineReader implements LineReader {
   }
 
   /**
-   * TODO: change semantic Closes currentFile and mark it as completed.
-   * <p/>
    * If these operations fail in a way that may cause duplicate log entries, an
    * error is logged but no exceptions are thrown. If these operations fail in
    * a
@@ -241,8 +240,6 @@ public class DirectorySyncFileLineReader implements LineReader {
 
     Path nextFile;
     boolean fileEnded;
-    if (!filesIterator.hasNext())
-      return Optional.absent();
     /* checking file's reading progress, skip if needed */
     nextFile = filesIterator.next();
     fileEnded = Files.exists(Paths.get(nextFile + endFileSuffix));
