@@ -100,7 +100,8 @@ public class TestDirectorySyncSource {
     txn.begin();
     Event e = channel.take();
     for (int i = 0; i < 100 && null != e; i++) {
-      System.out.println("body:" + new String(e.getBody()));
+      System.out.println(e.getHeaders().get(DirectorySyncSourceConfigurationConstants.DEFAULT_FILENAME_HEADER_KEY)
+          + " body: " + e.getBody());
       e = channel.take();
     }
     txn.commit();
