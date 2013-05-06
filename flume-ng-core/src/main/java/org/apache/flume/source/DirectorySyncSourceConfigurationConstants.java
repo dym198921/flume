@@ -47,5 +47,5 @@ public class DirectorySyncSourceConfigurationConstants {
   public static final String DEFAULT_FILENAME_HEADER_KEY = "file";
   /** What size to batch with before sending to ChannelProcessor. */
   public static final String BATCH_SIZE = "batchSize";
-  public static final int DEFAULT_BATCH_SIZE = 10;
+  public static final int DEFAULT_BATCH_SIZE = 100;
 }
