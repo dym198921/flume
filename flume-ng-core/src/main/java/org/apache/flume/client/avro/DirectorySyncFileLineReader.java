@@ -224,9 +224,9 @@ public class DirectorySyncFileLineReader implements LineReader {
               String fileStr = file.toString();
               if (!(fileStr.endsWith(endFileSuffix) ||
                   fileStr.endsWith(statsFileSuffix) ||
-                  fileStr.endsWith(finishedStatsFileSuffix)) ||
-                  !Files.exists(file.resolveSibling(file.getFileName() + finishedStatsFileSuffix))) {
-                files.add(file);
+                  fileStr.endsWith(finishedStatsFileSuffix))) {
+                if (!Files.exists(file.resolveSibling(file.getFileName() + finishedStatsFileSuffix)))
+                  files.add(file);
               }
             }
             return FileVisitResult.CONTINUE;
