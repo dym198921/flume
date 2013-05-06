@@ -68,6 +68,8 @@ public class ResumableUTF8FileReader extends Reader {
                                  String statsFileSuffix,
                                  String finishedStatsFileSuffix) throws IOException {
     this.file = file;
+    if (Files.isDirectory(file))
+      throw new IOException("file '" + file + "' is a directory");
     ch = (FileChannel) Files.newByteChannel(file);
     decoder = new LineOrientedUTF8Decoder();
     bb = ByteBuffer.allocateDirect(128 * 1024); // 128K

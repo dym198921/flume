@@ -220,7 +220,8 @@ public class DirectorySyncFileLineReader implements LineReader {
           @Override
           public boolean accept(Path entry) throws IOException {
             String fileStr = entry.toString();
-            if (fileStr.endsWith(endFileSuffix) ||
+            if (Files.isDirectory(entry) ||
+                fileStr.endsWith(endFileSuffix) ||
                 fileStr.endsWith(statsFileSuffix) ||
                 fileStr.endsWith(finishedStatsFileSuffix))
               return false;
