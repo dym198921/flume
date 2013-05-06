@@ -169,9 +169,11 @@ public class ResumableUTF8FileReader extends Reader {
         continue;
       }
       if (cr.isMalformed()) {
+        eof = true;
         throw new IOException("file '" + file + "' is not a UTF-8 encoded file");
       }
       if (cr.isUnmappable() || cr.isError()) {
+        eof = true;
         throw new IOException("file '" + file + "' decoding error");
       }
     }
