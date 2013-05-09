@@ -30,9 +30,11 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -42,7 +44,7 @@ public class TestDirectorySyncSource {
   private Path tmpDir;
 
   @Before
-  public void setUp() {
+  public void setUp() throws IOException {
     source = new DirectorySyncSource();
     channel = new MemoryChannel();
 
@@ -57,32 +59,32 @@ public class TestDirectorySyncSource {
     rcs.setChannels(channels);
 
     source.setChannelProcessor(new ChannelProcessor(rcs));
-    tmpDir = Paths.get("/home/vgu/tmp/src");
+    tmpDir = Files.createTempDirectory(null);
   }
 
   @After
   public void tearDown() throws IOException {
-    //Files.walkFileTree(tmpDir, new SimpleFileVisitor<Path>() {
-    //  @Override
-    //  public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
-    //      throws IOException {
-    //    Files.delete(file);
-    //    return FileVisitResult.CONTINUE;
-    //  }
-    //
-    //  @Override
-    //  public FileVisitResult postVisitDirectory(Path dir, IOException exc)
-    //      throws IOException {
-    //    Files.delete(dir);
-    //    return FileVisitResult.CONTINUE;
-    //  }
-    //});
+    Files.walkFileTree(tmpDir, new SimpleFileVisitor<Path>() {
+      @Override
+      public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
+          throws IOException {
+        Files.delete(file);
+        return FileVisitResult.CONTINUE;
+      }
+
+      @Override
+      public FileVisitResult postVisitDirectory(Path dir, IOException exc)
+          throws IOException {
+        Files.delete(dir);
+        return FileVisitResult.CONTINUE;
+      }
+    });
   }
 
   @Test
   public void testPutFilenameHeader() throws IOException, InterruptedException {
     Context context = new Context();
-    Path f1 = tmpDir.resolve("file1");
+    Path f1 = Files.createTempFile(tmpDir, null, null);
 
     String line = "file1line1\nfile1line2\nfile1line3\nfile1line4\n" +
         "file1line5\nfile1line6\nfile1line7\nfile1line8\n";
@@ -99,14 +101,11 @@ public class TestDirectorySyncSource {
     Transaction txn = channel.getTransaction();
     txn.begin();
     Event e = channel.take();
-    for (int i = 0; i < 100 && null != e; i++) {
-      System.out.println(e.getHeaders().get(DirectorySyncSourceConfigurationConstants.DEFAULT_FILENAME_HEADER_KEY)
-          + " body: " + e.getBody());
+    for (int i = 0; i < 7 && null != e; i++) {
       e = channel.take();
     }
     txn.commit();
     txn.close();
-    System.out.println("out");
   }
 
 }
