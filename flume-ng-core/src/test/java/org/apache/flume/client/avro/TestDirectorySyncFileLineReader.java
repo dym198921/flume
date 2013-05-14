@@ -16,55 +16,39 @@
 
 package org.apache.flume.client.avro;
 
+import com.google.common.io.Files;
 import junit.framework.Assert;
+import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.nio.charset.Charset;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.LinkedList;
 import java.util.List;
 
 public class TestDirectorySyncFileLineReader {
   private Logger logger = LoggerFactory.getLogger
       (TestDirectorySyncFileLineReader.class);
-  private Path tmpDir1;
+  private File tmpDir1;
 
   @Before
   public void setUp() throws Exception {
-    tmpDir1 = Files.createTempDirectory(null);
-    logger.trace("temporary directory created: {}", tmpDir1.toAbsolutePath());
+    tmpDir1 = Files.createTempDir();
+    logger.trace("temporary directory created: {}", tmpDir1.getAbsolutePath());
   }
 
   @After
   public void tearDown() throws Exception {
     // clean up temporary files
-    logger.trace("cleaning up temp dir: {}", tmpDir1.toAbsolutePath());
-    Files.walkFileTree(tmpDir1, new SimpleFileVisitor<Path>() {
-      @Override
-      public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
-          throws IOException {
-        Files.delete(file);
-        return FileVisitResult.CONTINUE;
-      }
-
-      @Override
-      public FileVisitResult postVisitDirectory(Path dir, IOException exc)
-          throws IOException {
-        Files.delete(dir);
-        return FileVisitResult.CONTINUE;
-      }
-    });
+    logger.trace("cleaning up temp dir: {}", tmpDir1.getAbsolutePath());
+    FileUtils.deleteDirectory(tmpDir1);
   }
 
   @Test
@@ -78,8 +62,8 @@ public class TestDirectorySyncFileLineReader {
 
   @Test
   public void testDirectorySync() throws IOException {
-    Path file1 = Paths.get(tmpDir1.resolve("file1").toString());
-    Path file2 = Paths.get(tmpDir1.resolve("file2").toString());
+    File file1 = new File(tmpDir1, "file1");
+    File file2 = new File(tmpDir1, "file2");
     List<String> lines = new LinkedList<String>();
     lines.add("line1\n");
     lines.add("line_2\r\n");
@@ -88,12 +72,14 @@ public class TestDirectorySyncFileLineReader {
     lines.add("line_5\r");
     lines.add("line6");
 
-    BufferedWriter writer = Files.newBufferedWriter(file1, Charset.forName("UTF-8"));
+    OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(file1, false),
+        Charset.forName("UTF-8"));
     for (String line : lines) {
       writer.write(line);
     }
     writer.close();
-    writer = Files.newBufferedWriter(file2, Charset.forName("UTF-8"));
+    writer = new OutputStreamWriter(new FileOutputStream(file2, false),
+        Charset.forName("UTF-8"));
     for (String line : lines) {
       writer.write(line);
     }
@@ -112,7 +98,7 @@ public class TestDirectorySyncFileLineReader {
     reader.close();
 
     for (int i = 0; i < exactLines.size(); i++) {
-      Assert.assertEquals(lines.get(i % 6).replaceAll("\r", "").replaceAll("\n", ""),exactLines.get(i));
+      Assert.assertEquals(lines.get(i % 6).replaceAll("\r", "").replaceAll("\n", ""), exactLines.get(i));
     }
   }
 }

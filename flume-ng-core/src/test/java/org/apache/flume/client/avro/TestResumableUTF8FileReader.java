@@ -21,26 +21,25 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.LinkedList;
 import java.util.List;
 
 public class TestResumableUTF8FileReader {
-  Path srcFile;
+  File srcFile;
 
   @Before
   public void setUp() throws Exception {
-    srcFile = Files.createTempFile(null, null);
+    srcFile = File.createTempFile("res", null);
   }
 
   @After
   public void tearDown() throws Exception {
-    Files.delete(srcFile);
+    srcFile.delete();
   }
 
   @Test
@@ -54,12 +53,13 @@ public class TestResumableUTF8FileReader {
     lines.add("line__4\r\n");
     lines.add("line_5\r");
     lines.add("line6\n");
-    BufferedWriter bufferedWriter = Files.newBufferedWriter(srcFile, Charset.forName("UTF-8"));
+    OutputStreamWriter osWriter = new OutputStreamWriter(new FileOutputStream(srcFile, false),
+        Charset.forName("UTF-8"));
     for (String line : lines) {
-      bufferedWriter.write(line);
+      osWriter.write(line);
     }
-    bufferedWriter.flush();
-    bufferedWriter.close();
+    osWriter.flush();
+    osWriter.close();
 
     // test reading
     for (int i = 0; i < lines.size(); i++) {
@@ -83,7 +83,7 @@ public class TestResumableUTF8FileReader {
       reader.commit();
       reader.close();
 
-      Files.delete(Paths.get(srcFile + ".FLUME-STATS"));
+      new File(srcFile.getPath() + ".FLUME-STATS").delete();
     }
 
     // test End of File sealing
@@ -93,6 +93,6 @@ public class TestResumableUTF8FileReader {
       continue;
     reader.commit();
     reader.close();
-    Assert.assertTrue(Files.exists(Paths.get(srcFile + ".FLUME-COMPLETED")));
+    Assert.assertTrue(new File(srcFile.getPath() + ".FLUME-COMPLETED").exists());
   }
 }

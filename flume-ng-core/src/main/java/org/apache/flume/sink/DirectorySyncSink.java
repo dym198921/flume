@@ -16,6 +16,7 @@
 package org.apache.flume.sink;
 
 import com.google.common.base.Preconditions;
+import com.google.common.io.Files;
 import org.apache.flume.Channel;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
@@ -29,12 +30,10 @@ import org.apache.flume.source.DirectorySyncSourceConfigurationConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.util.Map;
 
 public class DirectorySyncSink extends AbstractSink implements Configurable {
@@ -42,8 +41,8 @@ public class DirectorySyncSink extends AbstractSink implements Configurable {
       .getLogger(DirectorySyncSink.class);
   private static final int defaultBatchSize = 100;
   private int batchSize = defaultBatchSize;
-  private Path directory;
-  private Path cachedFile;
+  private File directory;
+  private File cachedFile;
   private OutputStream cachedOutputStream;
   private EventSerializer cachedSerializer;
   private String serializerType;
@@ -66,7 +65,7 @@ public class DirectorySyncSink extends AbstractSink implements Configurable {
 
     batchSize = context.getInteger("sink.batchSize", defaultBatchSize);
 
-    this.directory = Paths.get(directory);
+    this.directory = new File(directory);
 
     if (sinkCounter == null) {
       sinkCounter = new SinkCounter(getName());
@@ -99,15 +98,14 @@ public class DirectorySyncSink extends AbstractSink implements Configurable {
           String eventFileStr = headers.get(
               DirectorySyncSourceConfigurationConstants.DEFAULT_FILENAME_HEADER_KEY);
           try {
-            Path eventFile = directory.resolve(eventFileStr);
-            Files.createDirectories(eventFile.getParent());
+            File eventFile = new File(directory, eventFileStr);
+            Files.createParentDirs(eventFile);
             if (!eventFile.equals(cachedFile)) {
               cachedFile = eventFile;
               if (null != cachedOutputStream)
                 cachedOutputStream.close();
               logger.debug("creating new OutputStream for file {}", eventFileStr);
-              cachedOutputStream = Files.newOutputStream(eventFile,
-                  StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+              cachedOutputStream = new FileOutputStream(eventFile, true);
               cachedSerializer = EventSerializerFactory.getInstance(
                   serializerType, serializerContext, cachedOutputStream);
               cachedSerializer.afterCreate();
@@ -166,11 +164,11 @@ public class DirectorySyncSink extends AbstractSink implements Configurable {
         getName(), sinkCounter);
   }
 
-  public Path getDirectory() {
+  public File getDirectory() {
     return directory;
   }
 
-  public void setDirectory(Path directory) {
+  public void setDirectory(File directory) {
     this.directory = directory;
   }
 }

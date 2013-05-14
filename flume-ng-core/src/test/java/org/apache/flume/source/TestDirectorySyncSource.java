@@ -16,6 +16,8 @@
 
 package org.apache.flume.source;
 
+import com.google.common.io.Files;
+import org.apache.commons.io.FileUtils;
 import org.apache.flume.Channel;
 import org.apache.flume.ChannelSelector;
 import org.apache.flume.Context;
@@ -29,19 +31,15 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.File;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 
 public class TestDirectorySyncSource {
   static DirectorySyncSource source;
   static MemoryChannel channel;
-  private Path tmpDir;
+  private File tmpDir;
 
   @Before
   public void setUp() throws IOException {
@@ -59,36 +57,22 @@ public class TestDirectorySyncSource {
     rcs.setChannels(channels);
 
     source.setChannelProcessor(new ChannelProcessor(rcs));
-    tmpDir = Files.createTempDirectory(null);
+    tmpDir = Files.createTempDir();
   }
 
   @After
   public void tearDown() throws IOException {
-    Files.walkFileTree(tmpDir, new SimpleFileVisitor<Path>() {
-      @Override
-      public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
-          throws IOException {
-        Files.delete(file);
-        return FileVisitResult.CONTINUE;
-      }
-
-      @Override
-      public FileVisitResult postVisitDirectory(Path dir, IOException exc)
-          throws IOException {
-        Files.delete(dir);
-        return FileVisitResult.CONTINUE;
-      }
-    });
+    FileUtils.deleteDirectory(tmpDir);
   }
 
   @Test
   public void testPutFilenameHeader() throws IOException, InterruptedException {
     Context context = new Context();
-    Path f1 = Files.createTempFile(tmpDir, null, null);
+    File f1 = File.createTempFile("dirsync", null, tmpDir);
 
     String line = "file1line1\nfile1line2\nfile1line3\nfile1line4\n" +
         "file1line5\nfile1line6\nfile1line7\nfile1line8\n";
-    Files.write(f1, line.getBytes());
+    Files.write(line.getBytes(), f1);
 
     context.put(DirectorySyncSourceConfigurationConstants.SYNC_DIRECTORY,
         tmpDir.toString());

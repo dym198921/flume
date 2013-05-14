@@ -18,8 +18,13 @@ package org.apache.flume.client.avro;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sun.nio.cs.Surrogate;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.Buffer;
@@ -29,23 +34,21 @@ import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CoderResult;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 
 /** A class with information about a file being processed. */
 public class ResumableUTF8FileReader extends Reader {
   private static final Logger logger = LoggerFactory.getLogger(ResumableUTF8FileReader
       .class);
-  private Path file;
+  private File file;
   private FileChannel ch;
   private LineOrientedUTF8Decoder decoder;
   private ByteBuffer bb;
   private CharBuffer cb;
   private boolean fileEnded;
-  private Path statsFile;
-  private Path finishedStatsFile;
+  private File statsFile;
+  private File finishedStatsFile;
   private FileOutputStream statsFileOut;
   private long markedPosition = 0;
   private long readingPosition = 0;
@@ -63,14 +66,14 @@ public class ResumableUTF8FileReader extends Reader {
    * @param finishedStatsFileSuffix
    * @throws IOException
    */
-  public ResumableUTF8FileReader(Path file,
+  public ResumableUTF8FileReader(File file,
                                  boolean fileEnded,
                                  String statsFileSuffix,
                                  String finishedStatsFileSuffix) throws IOException {
     this.file = file;
-    if (Files.isDirectory(file))
+    if (file.isDirectory())
       throw new IOException("file '" + file + "' is a directory");
-    ch = (FileChannel) Files.newByteChannel(file);
+    ch = new FileInputStream(file).getChannel();
     decoder = new LineOrientedUTF8Decoder();
     bb = ByteBuffer.allocateDirect(128 * 1024); // 128K
     bb.limit(0);
@@ -78,8 +81,8 @@ public class ResumableUTF8FileReader extends Reader {
     this.fileEnded = fileEnded;
 
     /* stats file */
-    statsFile = file.resolveSibling(file.getFileName() + statsFileSuffix);
-    finishedStatsFile = file.resolveSibling(file.getFileName() + finishedStatsFileSuffix);
+    statsFile = new File(file.getParent(), file.getName() + statsFileSuffix);
+    finishedStatsFile = new File(file.getParent(), file.getName() + finishedStatsFileSuffix);
 
     /* get previous line position */
     retrieveStats();
@@ -88,14 +91,23 @@ public class ResumableUTF8FileReader extends Reader {
   /** Retrieve previous line position. */
   private void retrieveStats() throws IOException {
     logger.debug("retrieving status for file '{}'", file);
-    finished = Files.exists(finishedStatsFile);
+    finished = finishedStatsFile.exists();
     if (finished) {
       logger.debug("found stats file: '{}', no more reading needed", finishedStatsFile);
       return;
     }
-    if (Files.exists(statsFile)) {
+    if (statsFile.exists()) {
       logger.debug("found stats file: '{}'", statsFile);
-      List<String> lines = Files.readAllLines(statsFile, Charset.defaultCharset());
+      BufferedReader reader = new BufferedReader(new FileReader(statsFile));
+      List<String> lines = new ArrayList<String>();
+      try {
+        String line = null;
+        while ((line = reader.readLine()) != null) {
+          lines.add(line);
+        }
+      } finally {
+        reader.close();
+      }
       if (lines.size() == 0 || lines.get(0).length() == 0) {
         damaged = true;
         logger.error("stats file '{}' damaged, aborting...",
@@ -108,7 +120,7 @@ public class ResumableUTF8FileReader extends Reader {
       } catch (NumberFormatException e) {
         damaged = true;
         logger.warn("stats file '{}' format error, aborting...",
-            file.toAbsolutePath());
+            file.getAbsolutePath());
         throw e;
       }
     }
@@ -214,7 +226,7 @@ public class ResumableUTF8FileReader extends Reader {
     /* open stat file for write */
     try {
       if (null == statsFileOut)
-        statsFileOut = new FileOutputStream(statsFile.toFile(), false);
+        statsFileOut = new FileOutputStream(statsFile, false);
     } catch (IOException ioe) {
       damaged = true;
       throw new IOException("cannot create stats file for log file '" + file +
@@ -228,7 +240,7 @@ public class ResumableUTF8FileReader extends Reader {
       logger.debug("sealing stats file, renaming from '{}' to '{}'",
           statsFile, finishedStatsFile);
       statsFileOut.close();
-      Files.move(statsFile, finishedStatsFile);
+      statsFile.renameTo(finishedStatsFile);
       logger.debug("sealed");
       finished = true;
     }
@@ -244,7 +256,7 @@ public class ResumableUTF8FileReader extends Reader {
         file, String.valueOf(readingPosition));
   }
 
-  public Path getFile() {
+  public File getFile() {
     return file;
   }
 
@@ -473,8 +485,8 @@ public class ResumableUTF8FileReader extends Reader {
               !Character.isSupplementaryCodePoint(uc)) {
             return malformed(src, sp, dst, dp, 4);
           }
-          da[dp++] = Character.highSurrogate(uc);
-          da[dp++] = Character.lowSurrogate(uc);
+          da[dp++] = Surrogate.high(uc);
+          da[dp++] = Surrogate.low(uc);
           sp += 4;
         } else
           return malformed(src, sp, dst, dp, 1);
@@ -570,8 +582,8 @@ public class ResumableUTF8FileReader extends Reader {
               !Character.isSupplementaryCodePoint(uc)) {
             return malformed(src, mark, 4);
           }
-          dst.put(Character.highSurrogate(uc));
-          dst.put(Character.lowSurrogate(uc));
+          dst.put(Surrogate.high(uc));
+          dst.put(Surrogate.low(uc));
           mark += 4;
         } else {
           return malformed(src, mark, 1);

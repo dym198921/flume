@@ -28,8 +28,7 @@ import org.apache.flume.event.EventBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.io.File;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -52,7 +51,7 @@ public class DirectorySyncSource extends AbstractSource implements
   // Delay used when polling for file changes
   private static int POLL_DELAY_MS = 500;
   /* Config options */
-  private Path syncDirectory;
+  private File syncDirectory;
   private String endFileSuffix;
   private String syncingStatsFileSuffix;
   private String syncedStatsFileSuffix;
@@ -94,7 +93,7 @@ public class DirectorySyncSource extends AbstractSource implements
         DirectorySyncSourceConfigurationConstants.SYNC_DIRECTORY);
     Preconditions.checkState(syncDirectoryStr != null,
         "Configuration must specify a sync directory");
-    syncDirectory = Paths.get(syncDirectoryStr);
+    syncDirectory = new File(syncDirectoryStr);
 
     endFileSuffix = context.getString(
         DirectorySyncSourceConfigurationConstants.END_FILE_SUFFIX,
@@ -137,7 +136,8 @@ public class DirectorySyncSource extends AbstractSource implements
           if (strings.size() == 0) {
             break;
           }
-          String file = syncDirectory.relativize(reader.getLastFileRead()).toString();
+          String file = new File(syncDirectory,
+              reader.getLastFileRead().getName()).getPath();
           List<Event> events = Lists.newArrayList();
           for (String s : strings) {
             counterGroup.incrementAndGet("syncdir.lines.read");
