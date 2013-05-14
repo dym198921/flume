@@ -190,8 +190,7 @@ public class DirectorySyncFileLineReader implements LineReader {
   private void retireCurrentFile() throws IOException {
     Preconditions.checkState(currentFile.isPresent());
 
-    logger.info("file '{}': retiring...",
-        currentFile.get().getFile());
+    logger.debug("file '{}': retiring...", currentFile.get().getFile());
     currentFile.get().commit();
     currentFile.get().close();
   }
