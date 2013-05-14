@@ -136,8 +136,8 @@ public class DirectorySyncSource extends AbstractSource implements
           if (strings.size() == 0) {
             break;
           }
-          String file = new File(syncDirectory,
-              reader.getLastFileRead().getName()).getPath();
+          String file = syncDirectory.toURI().relativize(
+              reader.getLastFileRead().toURI()).getPath();
           List<Event> events = Lists.newArrayList();
           for (String s : strings) {
             counterGroup.incrementAndGet("syncdir.lines.read");
