@@ -20,15 +20,16 @@ import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.io.Files;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.filefilter.IOFileFilter;
+import org.apache.commons.io.filefilter.TrueFileFilter;
 import org.apache.flume.FlumeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.FileFilter;
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -48,7 +49,6 @@ public class DirectorySyncFileLineReader {
   private String endFileSuffix;
   private String statsFileSuffix;
   private String finishedStatsFileSuffix;
-  private List<File> files = new ArrayList<File>();
   private Iterator<File> filesIterator;
   private Optional<ResumableFileLineReader> currentFile = Optional.absent();
   /** Always contains the last file from which lines have been read. * */
@@ -191,8 +191,6 @@ public class DirectorySyncFileLineReader {
   public void close() throws IOException {
     if (currentFile.isPresent())
       currentFile.get().close();
-    if (null != files)
-      files.clear();
   }
 
   /**
@@ -203,28 +201,30 @@ public class DirectorySyncFileLineReader {
   private Optional<ResumableFileLineReader> getNextFile() throws IOException {
     if (null != filesIterator && !filesIterator.hasNext()) {
       filesIterator = null;
-      files.clear();
       return Optional.absent();
     }
     if (null == filesIterator) {
-      File[] theFiles = directory.listFiles(new FileFilter() {
+      filesIterator = FileUtils.iterateFiles(directory, new IOFileFilter() {
         @Override
-        public boolean accept(File pathname) {
-          if (pathname.isFile()) {
-            String fileStr = pathname.getName();
+        public boolean accept(File file) {
+          if (file.isFile()) {
+            String fileStr = file.getName();
             if (!(fileStr.endsWith(endFileSuffix) ||
                 fileStr.endsWith(statsFileSuffix) ||
                 fileStr.endsWith(finishedStatsFileSuffix))) {
-              File finishedMarkFile = new File(pathname.getPath() + finishedStatsFileSuffix);
+              File finishedMarkFile = new File(file.getPath() + finishedStatsFileSuffix);
               if (!finishedMarkFile.exists())
                 return true;
             }
           }
           return false;
         }
-      });
-      Collections.addAll(files, theFiles);
-      filesIterator = files.iterator();
+
+        @Override
+        public boolean accept(File dir, String name) {
+          return false;
+        }
+      }, TrueFileFilter.INSTANCE);
     }
 
     File nextFile;
