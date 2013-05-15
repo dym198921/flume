@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-package org.apache.flume.client.avro;
+package org.apache.flume.input;
 
 import org.junit.After;
 import org.junit.Assert;
@@ -63,22 +63,24 @@ public class TestResumableUTF8FileReader {
 
     // test reading
     for (int i = 0; i < lines.size(); i++) {
-      ResumableUTF8FileReader reader = new ResumableUTF8FileReader(srcFile, false,
+      ResumableFileLineReader reader = new ResumableFileLineReader(srcFile, false,
           ".FLUME-STATS", ".FLUME-COMPLETED");
       for (int j = 0; j < i; j++) {
-        String incomingLine = reader.readLine();
+        byte[] incomingLine = reader.readLine();
         Assert.assertNotNull(lines.get(j));
-        Assert.assertEquals(lines.get(j).replaceAll("\\r", "").replaceAll("\\n", ""), incomingLine);
+        Assert.assertEquals(lines.get(j).replaceAll("\\r", "").replaceAll("\\n", ""),
+            new String(incomingLine, Charset.forName("UTF-8")));
       }
       reader.commit();
       reader.close();
 
-      reader = new ResumableUTF8FileReader(srcFile, false,
+      reader = new ResumableFileLineReader(srcFile, false,
           ".FLUME-STATS", ".FLUME-COMPLETED");
       for (int j = i; j < lines.size(); j++) {
-        String incomingLine = reader.readLine();
+        byte[] incomingLine = reader.readLine();
         Assert.assertNotNull(lines.get(j));
-        Assert.assertEquals(lines.get(j).replaceAll("\\r", "").replaceAll("\\n", ""), incomingLine);
+        Assert.assertEquals(lines.get(j).replaceAll("\\r", "").replaceAll("\\n", ""),
+            new String(incomingLine, Charset.forName("UTF-8")));
       }
       reader.commit();
       reader.close();
@@ -87,7 +89,7 @@ public class TestResumableUTF8FileReader {
     }
 
     // test End of File sealing
-    ResumableUTF8FileReader reader = new ResumableUTF8FileReader(srcFile, true,
+    ResumableFileLineReader reader = new ResumableFileLineReader(srcFile, true,
         ".FLUME-STATS", ".FLUME-COMPLETED");
     while (reader.readLine() != null)
       continue;

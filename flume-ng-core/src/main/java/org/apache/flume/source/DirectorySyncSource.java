@@ -22,9 +22,9 @@ import org.apache.flume.Context;
 import org.apache.flume.CounterGroup;
 import org.apache.flume.Event;
 import org.apache.flume.EventDrivenSource;
-import org.apache.flume.client.avro.DirectorySyncFileLineReader;
 import org.apache.flume.conf.Configurable;
 import org.apache.flume.event.EventBuilder;
+import org.apache.flume.input.DirectorySyncFileLineReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -112,8 +112,8 @@ public class DirectorySyncSource extends AbstractSource implements
         DirectorySyncSourceConfigurationConstants.DEFAULT_BATCH_SIZE);
   }
 
-  private Event createEvent(String lineEntry, String filename) {
-    Event out = EventBuilder.withBody(lineEntry.getBytes());
+  private Event createEvent(byte[] lineEntry, String filename) {
+    Event out = EventBuilder.withBody(lineEntry);
     out.getHeaders().put(filenameHeaderKey, filename);
     return out;
   }
@@ -132,16 +132,16 @@ public class DirectorySyncSource extends AbstractSource implements
     public void run() {
       try {
         while (true) {
-          List<String> strings = reader.readLines(batchSize);
-          if (strings.size() == 0) {
+          List<byte[]> lines = reader.readLines(batchSize);
+          if (lines.size() == 0) {
             break;
           }
           String file = syncDirectory.toURI().relativize(
               reader.getLastFileRead().toURI()).getPath();
           List<Event> events = Lists.newArrayList();
-          for (String s : strings) {
+          for (byte[] l : lines) {
             counterGroup.incrementAndGet("syncdir.lines.read");
-            events.add(createEvent(s, file));
+            events.add(createEvent(l, file));
           }
           getChannelProcessor().processEventBatch(events);
           reader.commit();

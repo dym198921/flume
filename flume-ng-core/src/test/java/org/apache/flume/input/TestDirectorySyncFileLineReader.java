@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-package org.apache.flume.client.avro;
+package org.apache.flume.input;
 
 import com.google.common.io.Files;
 import junit.framework.Assert;
@@ -55,7 +55,7 @@ public class TestDirectorySyncFileLineReader {
   public void testEmptyDirectory() throws IOException {
     DirectorySyncFileLineReader reader = new DirectorySyncFileLineReader(tmpDir1,
         ".done", ".FLUME-INCOMPLETE", ".FLUME-COMPLETED");
-    String line = reader.readLine();
+    byte[] line = reader.readLine();
     Assert.assertNull(line);
     reader.close();
   }
@@ -90,9 +90,9 @@ public class TestDirectorySyncFileLineReader {
     DirectorySyncFileLineReader reader = new DirectorySyncFileLineReader(tmpDir1,
         ".done", ".FLUME-INCOMPLETE", ".FLUME-COMPLETED");
     List<String> exactLines = new LinkedList<String>();
-    String line;
+    byte[] line;
     while ((line = reader.readLine()) != null) {
-      exactLines.add(line);
+      exactLines.add(new String(line, Charset.forName("UTF-8")));
       reader.commit();
     }
     reader.close();

@@ -30,14 +30,14 @@ public class DirectorySyncSourceConfigurationConstants {
   public static final String DEFAULT_END_FILE_SUFFIX = ".done";
   /**
    * Set the status files suffix while using
-   * {@link org.apache.flume.client.avro.ResumableUTF8FileReader}.
+   * {@link org.apache.flume.input.ResumableFileLineReader}.
    */
   public static final String SYNCING_STATS_FILE_SUFFIX = "syncingStatsFileSuffix";
   public static final String DEFAULT_SYNCING_STATS_FILE_SUFFIX = ".FLUME-INCOMPLETE";
   /** Suffix appended to files when they are finished being sent. */
   /**
    * Set the status file suffix's ending form while using {@link
-   * org.apache.flume.client.avro.ResumableUTF8FileReader}.
+   * org.apache.flume.input.ResumableFileLineReader}.
    */
   public static final String SYNCED_STATS_FILE_SUFFIX = "syncedStatsFileSuffix";
   public static final String DEFAULT_SYNCED_STATS_FILE_SUFFIX = ".FLUME-COMPLETED";

@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-package org.apache.flume.client.avro;
+package org.apache.flume.input;
 
 import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
@@ -34,13 +34,14 @@ import java.util.Iterator;
 import java.util.List;
 
 /**
- * A {@link LineReader} which reads log data from files stored in a
+ * A {@link org.apache.flume.client.avro.LineReader} which reads log data from
+ * files stored in a
  * syncDirectory or subdirectories and put an empty mark file for each file
  * when
  * sync were done(through {@link #readLine()} calls). The user must {@link
  * #commit()} each read, to indicate that the lines have been fully processed.
  */
-public class DirectorySyncFileLineReader implements LineReader {
+public class DirectorySyncFileLineReader {
   private static final Logger logger = LoggerFactory.getLogger(
       DirectorySyncFileLineReader.class);
   private File directory;
@@ -49,9 +50,9 @@ public class DirectorySyncFileLineReader implements LineReader {
   private String finishedStatsFileSuffix;
   private List<File> files = new ArrayList<File>();
   private Iterator<File> filesIterator;
-  private Optional<ResumableUTF8FileReader> currentFile = Optional.absent();
+  private Optional<ResumableFileLineReader> currentFile = Optional.absent();
   /** Always contains the last file from which lines have been read. * */
-  private Optional<ResumableUTF8FileReader> lastFileRead = Optional.absent();
+  private Optional<ResumableFileLineReader> lastFileRead = Optional.absent();
   private boolean committed = true;
   /** A flag to signal an un-recoverable error has occured. */
   private boolean disabled = false;
@@ -112,20 +113,18 @@ public class DirectorySyncFileLineReader implements LineReader {
     committed = true;
   }
 
-  @Override
-  public String readLine() throws IOException {
+  public byte[] readLine() throws IOException {
     if (disabled) {
       throw new IllegalStateException("Reader has been disabled.");
     }
-    List<String> lines = readLines(1);
+    List<byte[]> lines = readLines(1);
     if (lines.size() == 0) {
       return null;
     }
     return lines.get(0);
   }
 
-  @Override
-  public List<String> readLines(int n) throws IOException {
+  public List<byte[]> readLines(int n) throws IOException {
     if (disabled) {
       throw new IllegalStateException("Reader has been disabled.");
     }
@@ -150,7 +149,7 @@ public class DirectorySyncFileLineReader implements LineReader {
 
     /* It's possible that the last read took us just up to a file boundary.
      * If so, try to roll to the next file, if there is one. */
-    String outLine;
+    byte[] outLine;
     while ((outLine = currentFile.get().readLine()) == null) {
       retireCurrentFile();
       currentFile = getNextFile();
@@ -158,7 +157,7 @@ public class DirectorySyncFileLineReader implements LineReader {
         return Collections.emptyList();
       }
     }
-    List<String> out = Lists.newArrayList();
+    List<byte[]> out = Lists.newArrayList();
     while (outLine != null) {
       out.add(outLine);
       if (out.size() == n) {
@@ -189,7 +188,6 @@ public class DirectorySyncFileLineReader implements LineReader {
     currentFile.get().close();
   }
 
-  @Override
   public void close() throws IOException {
     if (currentFile.isPresent())
       currentFile.get().close();
@@ -202,7 +200,7 @@ public class DirectorySyncFileLineReader implements LineReader {
    *
    * @return the next file
    */
-  private Optional<ResumableUTF8FileReader> getNextFile() throws IOException {
+  private Optional<ResumableFileLineReader> getNextFile() throws IOException {
     if (null != filesIterator && !filesIterator.hasNext()) {
       filesIterator = null;
       files.clear();
@@ -239,7 +237,7 @@ public class DirectorySyncFileLineReader implements LineReader {
     fileEnded = new File(nextFile.getPath() + endFileSuffix).exists();
     logger.debug("file {} marked as ended", nextFile);
     try {
-      ResumableUTF8FileReader file = new ResumableUTF8FileReader(nextFile, fileEnded,
+      ResumableFileLineReader file = new ResumableFileLineReader(nextFile, fileEnded,
           statsFileSuffix, finishedStatsFileSuffix);
       return Optional.of(file);
     } catch (IOException e) {
