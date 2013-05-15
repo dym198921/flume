@@ -55,9 +55,9 @@ public class DirectorySyncSink extends AbstractSink implements Configurable {
 
   @Override
   public void configure(Context context) {
-    String directory = context.getString("sink.directory");
+    String directory = context.getString("directory");
 
-    serializerType = context.getString("sink.serializer", "TEXT");
+    serializerType = context.getString("serializer", "TEXT");
     serializerContext =
         new Context(context.getSubProperties(EventSerializer.CTX_PREFIX));
 
