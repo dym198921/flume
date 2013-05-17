@@ -53,6 +53,7 @@ public class DirectorySyncSource extends AbstractSource implements
   /* Config options */
   private File syncDirectory;
   private String endFileSuffix;
+  private String statsFilePrefix;
   private String syncingStatsFileSuffix;
   private String syncedStatsFileSuffix;
   private String filenameHeaderKey;
@@ -70,8 +71,9 @@ public class DirectorySyncSource extends AbstractSource implements
     executor = Executors.newSingleThreadScheduledExecutor();
     counterGroup = new CounterGroup();
 
-    reader = new DirectorySyncFileLineReader(syncDirectory,
-        endFileSuffix, syncingStatsFileSuffix, syncedStatsFileSuffix);
+    reader = new DirectorySyncFileLineReader(
+        syncDirectory, endFileSuffix,
+        statsFilePrefix, syncingStatsFileSuffix, syncedStatsFileSuffix);
     runner = new DirectorySyncRunnable(reader, counterGroup);
 
     executor.scheduleWithFixedDelay(
@@ -98,6 +100,9 @@ public class DirectorySyncSource extends AbstractSource implements
     endFileSuffix = context.getString(
         DirectorySyncSourceConfigurationConstants.END_FILE_SUFFIX,
         DirectorySyncSourceConfigurationConstants.DEFAULT_END_FILE_SUFFIX);
+    statsFilePrefix = context.getString(
+        DirectorySyncSourceConfigurationConstants.STATS_FILE_PREFIX,
+        DirectorySyncSourceConfigurationConstants.DEFAULT_STATS_FILE_PREFIX);
     syncingStatsFileSuffix = context.getString(
         DirectorySyncSourceConfigurationConstants.SYNCING_STATS_FILE_SUFFIX,
         DirectorySyncSourceConfigurationConstants.DEFAULT_SYNCING_STATS_FILE_SUFFIX);

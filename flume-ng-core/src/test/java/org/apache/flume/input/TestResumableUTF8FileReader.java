@@ -64,7 +64,7 @@ public class TestResumableUTF8FileReader {
     // test reading
     for (int i = 0; i < lines.size(); i++) {
       ResumableFileLineReader reader = new ResumableFileLineReader(srcFile, false,
-          ".FLUME-STATS", ".FLUME-COMPLETED");
+         ".", ".FLUME-STATS", ".FLUME-COMPLETED");
       for (int j = 0; j < i; j++) {
         byte[] incomingLine = reader.readLine();
         Assert.assertNotNull(lines.get(j));
@@ -75,7 +75,7 @@ public class TestResumableUTF8FileReader {
       reader.close();
 
       reader = new ResumableFileLineReader(srcFile, false,
-          ".FLUME-STATS", ".FLUME-COMPLETED");
+         ".",  ".FLUME-STATS", ".FLUME-COMPLETED");
       for (int j = i; j < lines.size(); j++) {
         byte[] incomingLine = reader.readLine();
         Assert.assertNotNull(lines.get(j));
@@ -90,7 +90,7 @@ public class TestResumableUTF8FileReader {
 
     // test End of File sealing
     ResumableFileLineReader reader = new ResumableFileLineReader(srcFile, true,
-        ".FLUME-STATS", ".FLUME-COMPLETED");
+        ".", ".FLUME-STATS", ".FLUME-COMPLETED");
     while (reader.readLine() != null)
       continue;
     reader.commit();

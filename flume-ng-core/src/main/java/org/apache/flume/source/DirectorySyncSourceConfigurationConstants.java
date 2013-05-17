@@ -18,7 +18,7 @@ package org.apache.flume.source;
 
 public class DirectorySyncSourceConfigurationConstants {
   /** Directory to sync. */
-  public static final String SYNC_DIRECTORY = "dir";
+  public static final String SYNC_DIRECTORY = "directory";
   /**
    * When a file is fully written and won't be changed in the future, there
    * would be another file with the same name but having this suffix appended
@@ -29,9 +29,11 @@ public class DirectorySyncSourceConfigurationConstants {
   public static final String END_FILE_SUFFIX = "endFileSuffix";
   public static final String DEFAULT_END_FILE_SUFFIX = ".done";
   /**
-   * Set the status files suffix while using
+   * Set the status files prefix and suffix while using
    * {@link org.apache.flume.input.ResumableFileLineReader}.
    */
+  public static final String STATS_FILE_PREFIX = "syncingStatsFilePrefix";
+  public static final String DEFAULT_STATS_FILE_PREFIX = ".";
   public static final String SYNCING_STATS_FILE_SUFFIX = "syncingStatsFileSuffix";
   public static final String DEFAULT_SYNCING_STATS_FILE_SUFFIX = ".FLUME-INCOMPLETE";
   /** Suffix appended to files when they are finished being sent. */
@@ -44,7 +46,7 @@ public class DirectorySyncSourceConfigurationConstants {
 
   /** Header in which to put relative filename. */
   public static final String FILENAME_HEADER_KEY = "fileHeaderKey";
-  public static final String DEFAULT_FILENAME_HEADER_KEY = "file";
+  public static final String DEFAULT_FILENAME_HEADER_KEY = "path";
   /** What size to batch with before sending to ChannelProcessor. */
   public static final String BATCH_SIZE = "batchSize";
   public static final int DEFAULT_BATCH_SIZE = 100;

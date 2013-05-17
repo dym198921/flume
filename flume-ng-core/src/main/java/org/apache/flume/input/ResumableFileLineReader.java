@@ -62,6 +62,7 @@ public class ResumableFileLineReader {
    */
   public ResumableFileLineReader(File file,
                                  boolean fileEnded,
+                                 String statsFilePrefix,
                                  String statsFileSuffix,
                                  String finishedStatsFileSuffix) throws IOException {
     this.file = file;
@@ -75,8 +76,8 @@ public class ResumableFileLineReader {
     this.fileEnded = fileEnded;
 
     /* stats file */
-    statsFile = new File(file.getParent(), file.getName() + statsFileSuffix);
-    finishedStatsFile = new File(file.getParent(), file.getName() + finishedStatsFileSuffix);
+    statsFile = new File(file.getParent(), statsFilePrefix + file.getName() + statsFileSuffix);
+    finishedStatsFile = new File(file.getParent(), statsFilePrefix + file.getName() + finishedStatsFileSuffix);
 
     /* get previous line position */
     retrieveStats();

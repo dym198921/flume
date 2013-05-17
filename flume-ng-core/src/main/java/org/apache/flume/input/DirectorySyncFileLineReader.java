@@ -47,6 +47,7 @@ public class DirectorySyncFileLineReader {
       DirectorySyncFileLineReader.class);
   private File directory;
   private String endFileSuffix;
+  private String statsFilePrefix;
   private String statsFileSuffix;
   private String finishedStatsFileSuffix;
   private Iterator<File> filesIterator;
@@ -67,6 +68,7 @@ public class DirectorySyncFileLineReader {
    */
   public DirectorySyncFileLineReader(File directory,
                                      final String endFileSuffix,
+                                     final String statsFilePrefix,
                                      final String statsFileSuffix,
                                      final String finishedStatsFileSuffix) {
     // Verify syncDirectory exists and is readable/writable
@@ -88,6 +90,7 @@ public class DirectorySyncFileLineReader {
           " in the sync syncDirectory: " + directory, e);
     }
     this.endFileSuffix = endFileSuffix;
+    this.statsFilePrefix = statsFilePrefix;
     this.statsFileSuffix = statsFileSuffix;
     this.finishedStatsFileSuffix = finishedStatsFileSuffix;
   }
@@ -238,7 +241,7 @@ public class DirectorySyncFileLineReader {
     logger.debug("file {} marked as ended", nextFile);
     try {
       ResumableFileLineReader file = new ResumableFileLineReader(nextFile, fileEnded,
-          statsFileSuffix, finishedStatsFileSuffix);
+          statsFilePrefix, statsFileSuffix, finishedStatsFileSuffix);
       return Optional.of(file);
     } catch (IOException e) {
       disabled = true;

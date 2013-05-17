@@ -54,7 +54,7 @@ public class TestDirectorySyncFileLineReader {
   @Test
   public void testEmptyDirectory() throws IOException {
     DirectorySyncFileLineReader reader = new DirectorySyncFileLineReader(tmpDir1,
-        ".done", ".FLUME-INCOMPLETE", ".FLUME-COMPLETED");
+        ".done",".", ".FLUME-INCOMPLETE", ".FLUME-COMPLETED");
     byte[] line = reader.readLine();
     Assert.assertNull(line);
     reader.close();
@@ -88,7 +88,7 @@ public class TestDirectorySyncFileLineReader {
     //Files.createFile(Paths.get(file2 + ".done"));
 
     DirectorySyncFileLineReader reader = new DirectorySyncFileLineReader(tmpDir1,
-        ".done", ".FLUME-INCOMPLETE", ".FLUME-COMPLETED");
+        ".done", ".", ".FLUME-INCOMPLETE", ".FLUME-COMPLETED");
     List<String> exactLines = new LinkedList<String>();
     byte[] line;
     while ((line = reader.readLine()) != null) {
