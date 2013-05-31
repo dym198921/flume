@@ -85,7 +85,7 @@ public class TestResumableUTF8FileReader {
       reader.commit();
       reader.close();
 
-      new File(srcFile.getPath() + ".FLUME-STATS").delete();
+      new File(srcFile.getParent() + File.separator + "." + srcFile.getName() + ".FLUME-STATS").delete();
     }
 
     // test End of File sealing
@@ -95,6 +95,6 @@ public class TestResumableUTF8FileReader {
       continue;
     reader.commit();
     reader.close();
-    Assert.assertTrue(new File(srcFile.getPath() + ".FLUME-COMPLETED").exists());
+    Assert.assertTrue(new File(srcFile.getParent() + File.separator + "." +srcFile.getName() + ".FLUME-COMPLETED").exists());
   }
 }
