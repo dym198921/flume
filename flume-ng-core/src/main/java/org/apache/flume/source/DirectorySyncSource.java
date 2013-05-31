@@ -52,6 +52,7 @@ public class DirectorySyncSource extends AbstractSource implements
   private static int POLL_DELAY_MS = 500;
   /* Config options */
   private File syncDirectory;
+  private String filePrefix;
   private String endFileSuffix;
   private String statsFilePrefix;
   private String syncingStatsFileSuffix;
@@ -97,6 +98,9 @@ public class DirectorySyncSource extends AbstractSource implements
         "Configuration must specify a sync directory");
     syncDirectory = new File(syncDirectoryStr);
 
+    filePrefix = context.getString(
+        DirectorySyncSourceConfigurationConstants.FILE_PREFIX,
+        DirectorySyncSourceConfigurationConstants.DEFAULT_FILE_PREFIX);
     endFileSuffix = context.getString(
         DirectorySyncSourceConfigurationConstants.END_FILE_SUFFIX,
         DirectorySyncSourceConfigurationConstants.DEFAULT_END_FILE_SUFFIX);
@@ -119,7 +123,8 @@ public class DirectorySyncSource extends AbstractSource implements
 
   private Event createEvent(byte[] lineEntry, String filename) {
     Event out = EventBuilder.withBody(lineEntry);
-    out.getHeaders().put(filenameHeaderKey, filename);
+    out.getHeaders().put(filenameHeaderKey,
+        filePrefix + System.getProperty("line.separator") + filename);
     return out;
   }
 

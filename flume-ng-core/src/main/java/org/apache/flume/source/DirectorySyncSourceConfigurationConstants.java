@@ -19,6 +19,9 @@ package org.apache.flume.source;
 public class DirectorySyncSourceConfigurationConstants {
   /** Directory to sync. */
   public static final String SYNC_DIRECTORY = "directory";
+  /** All files in this directory would prepend this prefix */
+  public static final String FILE_PREFIX = "filePrefix";
+  public static final String DEFAULT_FILE_PREFIX = "filePrefix";
   /**
    * When a file is fully written and won't be changed in the future, there
    * would be another file with the same name but having this suffix appended
