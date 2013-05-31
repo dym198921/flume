@@ -48,8 +48,7 @@ public class DirectorySyncSourceConfigurationConstants {
   public static final String DEFAULT_SYNCED_STATS_FILE_SUFFIX = ".FLUME-COMPLETED";
 
   /** Header in which to put relative filename. */
-  public static final String FILENAME_HEADER_KEY = "fileHeaderKey";
-  public static final String DEFAULT_FILENAME_HEADER_KEY = "path";
+  public static final String FILENAME_HEADER_KEY = "path";
   /** What size to batch with before sending to ChannelProcessor. */
   public static final String BATCH_SIZE = "batchSize";
   public static final int DEFAULT_BATCH_SIZE = 100;

@@ -57,7 +57,7 @@ public class DirectorySyncSource extends AbstractSource implements
   private String statsFilePrefix;
   private String syncingStatsFileSuffix;
   private String syncedStatsFileSuffix;
-  private String filenameHeaderKey;
+  private String filenameHeaderKey = DirectorySyncSourceConfigurationConstants.FILENAME_HEADER_KEY;
   private int batchSize;
   private ScheduledExecutorService executor;
   private CounterGroup counterGroup;
@@ -113,9 +113,6 @@ public class DirectorySyncSource extends AbstractSource implements
     syncedStatsFileSuffix = context.getString(
         DirectorySyncSourceConfigurationConstants.SYNCED_STATS_FILE_SUFFIX,
         DirectorySyncSourceConfigurationConstants.DEFAULT_SYNCED_STATS_FILE_SUFFIX);
-    filenameHeaderKey = context.getString(
-        DirectorySyncSourceConfigurationConstants.FILENAME_HEADER_KEY,
-        DirectorySyncSourceConfigurationConstants.DEFAULT_FILENAME_HEADER_KEY);
     batchSize = context.getInteger(
         DirectorySyncSourceConfigurationConstants.BATCH_SIZE,
         DirectorySyncSourceConfigurationConstants.DEFAULT_BATCH_SIZE);

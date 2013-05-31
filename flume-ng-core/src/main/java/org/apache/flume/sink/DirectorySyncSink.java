@@ -96,7 +96,7 @@ public class DirectorySyncSink extends AbstractSink implements Configurable {
         if (event != null) {
           Map<String, String> headers = event.getHeaders();
           String eventFileStr = headers.get(
-              DirectorySyncSourceConfigurationConstants.DEFAULT_FILENAME_HEADER_KEY);
+              DirectorySyncSourceConfigurationConstants.FILENAME_HEADER_KEY);
           try {
             File eventFile = new File(directory, eventFileStr);
             Files.createParentDirs(eventFile);
