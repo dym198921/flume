@@ -28,8 +28,8 @@ import org.apache.flume.conf.ComponentConfigurationFactory;
 import org.apache.flume.conf.ConfigurationException;
 import org.apache.flume.conf.FlumeConfiguration;
 import org.apache.flume.conf.FlumeConfigurationError;
-import org.apache.flume.conf.FlumeConfigurationErrorType;
 import org.apache.flume.conf.FlumeConfigurationError.ErrorOrWarning;
+import org.apache.flume.conf.FlumeConfigurationErrorType;
 import org.apache.flume.conf.channel.ChannelSelectorConfiguration;
 import org.apache.flume.conf.channel.ChannelSelectorConfiguration.ChannelSelectorConfigurationType;
 import org.apache.flume.conf.channel.ChannelSelectorType;
@@ -177,7 +177,6 @@ public class SourceConfiguration extends ComponentConfiguration {
      * @see org.apache.flume.source.MultiportSyslogTCPSource
      *
      */
-
     MULTIPORT_SYSLOGTCP("org.apache.flume.source.MultiportSyslogTCPSourceConfiguration"),
 
     /**
@@ -186,6 +185,13 @@ public class SourceConfiguration extends ComponentConfiguration {
      * @see org.apache.flume.source.SpoolDirectorySource
      */
     SPOOLDIR("org.apache.flume.conf.source.SpoolDirectorySourceConfiguration"),
+
+    /**
+     * Sync directory source
+     *
+     * @see org.apache.flume.source.SyncDirectorySource
+     */
+    SYNCDIR("org.apache.flume.conf.source.DirectorySyncSourceConfiguration"),
 
     /**
      * HTTP Source
@@ -199,14 +205,7 @@ public class SourceConfiguration extends ComponentConfiguration {
      *
      * @see org.apache.flume.source.ThriftSource
      */
-    THRIFT("org.apache.flume.source.http.ThriftSourceConfiguration"),
-
-    /**
-     * Sync directory source
-     *
-     * @see org.apache.flume.source.SyncDirectorySource
-     */
-    SYNCDIR("org.apache.flume.conf.source.DirectorySyncSourceConfiguration");
+    THRIFT("org.apache.flume.source.http.ThriftSourceConfiguration");
 
     private String srcConfigurationName;
 

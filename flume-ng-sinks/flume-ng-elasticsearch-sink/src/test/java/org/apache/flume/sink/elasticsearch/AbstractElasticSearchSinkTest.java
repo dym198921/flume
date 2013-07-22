@@ -27,7 +27,6 @@ import static org.junit.Assert.assertEquals;
 
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.Map;
 
 import org.apache.flume.Channel;
@@ -48,12 +47,16 @@ import org.elasticsearch.node.NodeBuilder;
 import org.elasticsearch.node.internal.InternalNode;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
+import org.joda.time.DateTimeUtils;
+import org.junit.After;
+import org.junit.Before;
 
 public abstract class AbstractElasticSearchSinkTest {
 
   static final String DEFAULT_INDEX_NAME = "flume";
   static final String DEFAULT_INDEX_TYPE = "log";
   static final String DEFAULT_CLUSTER_NAME = "elasticsearch";
+  static final long FIXED_TIME_MILLIS = 123456789L;
 
   Node node;
   Client client;
@@ -68,8 +71,8 @@ public abstract class AbstractElasticSearchSinkTest {
     parameters.put(BATCH_SIZE, "1");
     parameters.put(TTL, "5");
 
-    timestampedIndexName = DEFAULT_INDEX_NAME + "-"
-        + ElasticSearchSink.df.format(new Date());
+    timestampedIndexName = DEFAULT_INDEX_NAME + '-'
+        + ElasticSearchIndexRequestBuilderFactory.df.format(FIXED_TIME_MILLIS);
   }
 
   void createNodes() throws Exception {
@@ -79,6 +82,7 @@ public abstract class AbstractElasticSearchSinkTest {
         .put("number_of_replicas", 0)
         .put("routing.hash.type", "simple")
         .put("gateway.type", "none")
+        .put("path.data", "target/es-test")
         .build();
 
     node = NodeBuilder.nodeBuilder().settings(settings).local(true).node();
@@ -92,6 +96,16 @@ public abstract class AbstractElasticSearchSinkTest {
     ((InternalNode) node).injector().getInstance(Gateway.class).reset();
     client.close();
     node.close();
+  }
+
+  @Before
+  public void setFixedJodaTime() {
+    DateTimeUtils.setCurrentMillisFixed(FIXED_TIME_MILLIS);
+  }
+
+  @After
+  public void resetJodaTime() {
+    DateTimeUtils.setCurrentMillisSystem();
   }
 
   Channel bindAndStartChannel(ElasticSearchSink fixture) {

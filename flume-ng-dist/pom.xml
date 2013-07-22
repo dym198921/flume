@@ -24,7 +24,7 @@
   <parent>
     <artifactId>flume-parent</artifactId>
     <groupId>org.apache.flume</groupId>
-    <version>1.4.0-SNAPSHOT</version>
+    <version>1.4.0</version>
   </parent>
 
   <artifactId>flume-ng-dist</artifactId>
@@ -43,13 +43,13 @@
             <goals>
               <goal>single</goal>
             </goals>
-            <inherited>false</inherited>
             <configuration>
               <finalName>apache-flume-${project.version}</finalName>
               <descriptors>
                 <descriptor>src/main/assembly/bin.xml</descriptor>
                 <descriptor>src/main/assembly/src.xml</descriptor>
               </descriptors>
+              <tarLongFileMode>gnu</tarLongFileMode>
             </configuration>
           </execution>
         </executions>
@@ -93,10 +93,6 @@
       <artifactId>flume-jdbc-channel</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.apache.flume.flume-ng-channels</groupId>
-      <artifactId>flume-recoverable-memory-channel</artifactId>
-    </dependency>
-    <dependency>
       <groupId>org.apache.flume.flume-ng-sinks</groupId>
       <artifactId>flume-hdfs-sink</artifactId>
     </dependency>
@@ -111,6 +107,10 @@
     <dependency>
       <groupId>org.apache.flume.flume-ng-sinks</groupId>
       <artifactId>flume-ng-elasticsearch-sink</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.flume.flume-ng-sinks</groupId>
+      <artifactId>flume-ng-morphline-solr-sink</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.flume.flume-ng-sources</groupId>
@@ -131,6 +131,15 @@
     <dependency>
       <groupId>org.apache.flume.flume-ng-clients</groupId>
       <artifactId>flume-ng-log4jappender</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.flume.flume-ng-clients</groupId>
+      <artifactId>flume-ng-log4jappender</artifactId>
+      <classifier>jar-with-dependencies</classifier>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.flume</groupId>
+      <artifactId>flume-tools</artifactId>
     </dependency>
   </dependencies>
 

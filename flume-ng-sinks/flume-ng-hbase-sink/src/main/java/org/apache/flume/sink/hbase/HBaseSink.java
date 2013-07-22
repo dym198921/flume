@@ -24,12 +24,12 @@ import java.util.List;
 
 import org.apache.flume.Channel;
 import org.apache.flume.Context;
-import org.apache.flume.CounterGroup;
 import org.apache.flume.Event;
 import org.apache.flume.EventDeliveryException;
 import org.apache.flume.FlumeException;
 import org.apache.flume.Transaction;
 import org.apache.flume.conf.Configurable;
+import org.apache.flume.instrumentation.SinkCounter;
 import org.apache.flume.sink.AbstractSink;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
@@ -62,7 +62,7 @@ import org.apache.hadoop.hbase.security.User;
  * reached or if the number of events in the current transaction reaches the
  * batch size, whichever comes first.<p>
  * Other optional parameters are:<p>
- * <tt>serializer:</tt> A class implementing {@link HBaseEventSerializer}.
+ * <tt>serializer:</tt> A class implementing {@link HbaseEventSerializer}.
  *  An instance of
  * this class will be used to write out events to hbase.<p>
  * <tt>serializer.*:</tt> Passed in the configure() method to serializer
@@ -88,7 +88,6 @@ public class HBaseSink extends AbstractSink implements Configurable {
   private HTable table;
   private long batchSize;
   private Configuration config;
-  private CounterGroup counterGroup = new CounterGroup();
   private static final Logger logger = LoggerFactory.getLogger(HBaseSink.class);
   private HbaseEventSerializer serializer;
   private String eventSerializerType;
@@ -97,6 +96,7 @@ public class HBaseSink extends AbstractSink implements Configurable {
   private String kerberosKeytab;
   private User hbaseUser;
   private boolean enableWal = true;
+  private SinkCounter sinkCounter;
 
   public HBaseSink(){
     this(HBaseConfiguration.create());
@@ -111,24 +111,32 @@ public class HBaseSink extends AbstractSink implements Configurable {
     Preconditions.checkArgument(table == null, "Please call stop " +
         "before calling start on an old instance.");
     try {
-      table = new HTable(config, tableName);
-      //flush is controlled by us. This ensures that HBase changing
-      //their criteria for flushing does not change how we flush.
-      table.setAutoFlush(false);
-    } catch (IOException e) {
+      if (HBaseSinkSecurityManager.isSecurityEnabled(config)) {
+        hbaseUser = HBaseSinkSecurityManager.login(config, null,
+          kerberosPrincipal, kerberosKeytab);
+      }
+    } catch (Exception ex) {
+      sinkCounter.incrementConnectionFailedCount();
+      throw new FlumeException("Failed to login to HBase using "
+        + "provided credentials.", ex);
+    }
+    try {
+      table = runPrivileged(new PrivilegedExceptionAction<HTable>() {
+        @Override
+        public HTable run() throws Exception {
+          HTable table = new HTable(config, tableName);
+          table.setAutoFlush(false);
+          // Flush is controlled by us. This ensures that HBase changing
+          // their criteria for flushing does not change how we flush.
+          return table;
+        }
+      });
+    } catch (Exception e) {
+      sinkCounter.incrementConnectionFailedCount();
       logger.error("Could not load table, " + tableName +
           " from HBase", e);
       throw new FlumeException("Could not load table, " + tableName +
           " from HBase", e);
-    }
-    try {
-      if (HBaseSinkSecurityManager.isSecurityEnabled(config)) {
-        hbaseUser = HBaseSinkSecurityManager.login(config, null,
-                kerberosPrincipal, kerberosKeytab);
-      }
-    } catch (Exception ex) {
-      throw new FlumeException("Failed to login to HBase using "
-              + "provided credentials.", ex);
     }
     try {
       if (!runPrivileged(new PrivilegedExceptionAction<Boolean>() {
@@ -143,6 +151,7 @@ public class HBaseSink extends AbstractSink implements Configurable {
     } catch (Exception e) {
       //Get getTableDescriptor also throws IOException, so catch the IOException
       //thrown above or by the getTableDescriptor() call.
+      sinkCounter.incrementConnectionFailedCount();
       throw new FlumeException("Error getting column family from HBase."
               + "Please verify that the table " + tableName + " and Column Family, "
               + Bytes.toString(columnFamily) + " exists in HBase, and the"
@@ -150,6 +159,8 @@ public class HBaseSink extends AbstractSink implements Configurable {
     }
 
     super.start();
+    sinkCounter.incrementConnectionCreatedCount();
+    sinkCounter.start();
   }
 
   @Override
@@ -160,6 +171,8 @@ public class HBaseSink extends AbstractSink implements Configurable {
     } catch (IOException e) {
       throw new FlumeException("Error closing table.", e);
     }
+    sinkCounter.incrementConnectionClosedCount();
+    sinkCounter.stop();
   }
 
   @SuppressWarnings("unchecked")
@@ -208,6 +221,7 @@ public class HBaseSink extends AbstractSink implements Configurable {
         "writes to HBase will have WAL disabled, and any data in the " +
         "memstore of this region in the Region Server could be lost!");
     }
+    sinkCounter = new SinkCounter(this.getName());
   }
 
   @Override
@@ -218,11 +232,16 @@ public class HBaseSink extends AbstractSink implements Configurable {
     List<Row> actions = new LinkedList<Row>();
     List<Increment> incs = new LinkedList<Increment>();
     txn.begin();
-    for(long i = 0; i < batchSize; i++) {
+    long i = 0;
+    for(; i < batchSize; i++) {
       Event event = channel.take();
       if(event == null){
         status = Status.BACKOFF;
-        counterGroup.incrementAndGet("channel.underflow");
+        if (i == 0) {
+          sinkCounter.incrementBatchEmptyCount();
+        } else {
+          sinkCounter.incrementBatchUnderflowCount();
+        }
         break;
       } else {
         serializer.initialize(event, columnFamily);
@@ -230,6 +249,11 @@ public class HBaseSink extends AbstractSink implements Configurable {
         incs.addAll(serializer.getIncrements());
       }
     }
+    if (i == batchSize) {
+      sinkCounter.incrementBatchCompleteCount();
+    }
+    sinkCounter.addToEventDrainAttemptCount(i);
+
     putEventsAndCommit(actions, incs, txn);
     return status;
   }
@@ -266,7 +290,7 @@ public class HBaseSink extends AbstractSink implements Configurable {
       });
 
       txn.commit();
-      counterGroup.incrementAndGet("transaction.success");
+      sinkCounter.addToEventDrainSuccessCount(actions.size());
     } catch (Throwable e) {
       try{
         txn.rollback();
@@ -274,7 +298,6 @@ public class HBaseSink extends AbstractSink implements Configurable {
         logger.error("Exception in rollback. Rollback might not have been" +
             "successful." , e2);
       }
-      counterGroup.incrementAndGet("transaction.rollback");
       logger.error("Failed to commit transaction." +
           "Transaction rolled back.", e);
       if(e instanceof Error || e instanceof RuntimeException){

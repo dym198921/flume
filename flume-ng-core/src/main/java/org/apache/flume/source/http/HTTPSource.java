@@ -19,23 +19,28 @@ package org.apache.flume.source.http;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import org.apache.flume.ChannelException;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.EventDrivenSource;
 import org.apache.flume.conf.Configurable;
+import org.apache.flume.instrumentation.SourceCounter;
 import org.apache.flume.source.AbstractSource;
+import org.mortbay.jetty.Connector;
 import org.mortbay.jetty.Server;
+import org.mortbay.jetty.bio.SocketConnector;
 import org.mortbay.jetty.servlet.ServletHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 /**
  * A source which accepts Flume Events by HTTP POST and GET. GET should be used
@@ -48,7 +53,7 @@ import org.slf4j.LoggerFactory;
  * the server should bind. Mandatory <p> <tt>handler</tt>: the class that
  * deserializes a HttpServletRequest into a list of flume events. This class
  * must implement HTTPSourceHandler. Default:
- * {@linkplain JSONDeserializer}. <p> <tt>handler.*</tt> Any configuration
+ * {@linkplain JSONHandler}. <p> <tt>handler.*</tt> Any configuration
  * to be passed to the handler. <p>
  *
  * All events deserialized from one Http request are committed to the channel in
@@ -79,16 +84,20 @@ public class HTTPSource extends AbstractSource implements
   private static final Logger LOG = LoggerFactory.getLogger(HTTPSource.class);
   private volatile Integer port;
   private volatile Server srv;
+  private volatile String host;
   private HTTPSourceHandler handler;
+  private SourceCounter sourceCounter;
 
   @Override
   public void configure(Context context) {
     try {
       port = context.getInteger(HTTPSourceConfigurationConstants.CONFIG_PORT);
-      checkPort();
+      host = context.getString(HTTPSourceConfigurationConstants.CONFIG_BIND,
+        HTTPSourceConfigurationConstants.DEFAULT_BIND);
+      checkHostAndPort();
       String handlerClassName = context.getString(
               HTTPSourceConfigurationConstants.CONFIG_HANDLER,
-              HTTPSourceConfigurationConstants.DEFAULT_HANDLER);
+              HTTPSourceConfigurationConstants.DEFAULT_HANDLER).trim();
       @SuppressWarnings("unchecked")
       Class<? extends HTTPSourceHandler> clazz =
               (Class<? extends HTTPSourceHandler>)
@@ -111,16 +120,29 @@ public class HTTPSource extends AbstractSource implements
       LOG.error("Error configuring HTTPSource!", ex);
       Throwables.propagate(ex);
     }
+    if (sourceCounter == null) {
+      sourceCounter = new SourceCounter(getName());
+    }
   }
 
-  @Override
+  private void checkHostAndPort() {
+    Preconditions.checkState(host != null && !host.isEmpty(),
+      "HTTPSource hostname specified is empty");
+    Preconditions.checkNotNull(port, "HTTPSource requires a port number to be"
+      + " specified");
+  }
+
+    @Override
   public void start() {
-    checkPort();
     Preconditions.checkState(srv == null,
             "Running HTTP Server found in source: " + getName()
             + " before I started one."
             + "Will not attempt to start.");
-    srv = new Server(port);
+    srv = new Server();
+    SocketConnector connector = new SocketConnector();
+    connector.setPort(port);
+    connector.setHost(host);
+    srv.setConnectors(new Connector[] { connector });
     try {
       org.mortbay.jetty.servlet.Context root =
               new org.mortbay.jetty.servlet.Context(
@@ -133,6 +155,7 @@ public class HTTPSource extends AbstractSource implements
       Throwables.propagate(ex);
     }
     Preconditions.checkArgument(srv.isRunning());
+    sourceCounter.start();
     super.start();
   }
 
@@ -145,11 +168,8 @@ public class HTTPSource extends AbstractSource implements
     } catch (Exception ex) {
       LOG.error("Error while stopping HTTPSource. Exception follows.", ex);
     }
-  }
-
-  private void checkPort() {
-    Preconditions.checkNotNull(port, "HTTPSource requires a port number to be"
-            + "specified");
+    sourceCounter.stop();
+    LOG.info("Http source {} stopped. Metrics: {}", getName(), sourceCounter);
   }
 
   private class FlumeHTTPServlet extends HttpServlet {
@@ -159,7 +179,7 @@ public class HTTPSource extends AbstractSource implements
     @Override
     public void doPost(HttpServletRequest request, HttpServletResponse response)
             throws IOException {
-      List<Event> events = new ArrayList<Event>(0); //create empty list
+      List<Event> events = Collections.emptyList(); //create empty list
       try {
         events = handler.getEvents(request);
       } catch (HTTPBadRequestException ex) {
@@ -175,6 +195,8 @@ public class HTTPSource extends AbstractSource implements
                 + ex.getMessage());
         return;
       }
+      sourceCounter.incrementAppendBatchReceivedCount();
+      sourceCounter.addToEventReceivedCount(events.size());
       try {
         getChannelProcessor().processEventBatch(events);
       } catch (ChannelException ex) {
@@ -195,6 +217,8 @@ public class HTTPSource extends AbstractSource implements
       response.setCharacterEncoding(request.getCharacterEncoding());
       response.setStatus(HttpServletResponse.SC_OK);
       response.flushBuffer();
+      sourceCounter.incrementAppendBatchAcceptedCount();
+      sourceCounter.addToEventAcceptedCount(events.size());
     }
 
     @Override

@@ -25,65 +25,31 @@
   <id>bin</id>
 
   <formats>
+    <format>dir</format>
     <format>tar.gz</format>
   </formats>
 
   <baseDirectory>apache-flume-${project.version}-bin</baseDirectory>
 
-  <moduleSets>
-
-    <moduleSet>
-      <useAllReactorProjects>true</useAllReactorProjects>
-
+  <dependencySets>
+    <dependencySet>
+      <outputDirectory>lib</outputDirectory>
+      <unpack>false</unpack>
+      <useProjectArtifact>false</useProjectArtifact>
+      <excludes>
+        <exclude>org.apache.flume.flume-ng-clients:flume-ng-log4jappender:jar:jar-with-dependencies</exclude>
+      </excludes>
+    </dependencySet>
+    <dependencySet>
+      <outputDirectory>tools</outputDirectory>
+      <unpack>false</unpack>
+      <useProjectArtifact>false</useProjectArtifact>
       <includes>
-        <include>org.apache.flume:flume-ng-configuration</include>
-        <include>org.apache.flume:flume-ng-sdk</include>
-        <include>org.apache.flume:flume-ng-core</include>
-        <include>org.apache.flume:flume-ng-node</include>
-        <include>org.apache.flume:flume-ng-dist</include>
-        <include>org.apache.flume:flume-ng-channels</include>
-        <include>org.apache.flume:flume-ng-sinks</include>
-        <include>org.apache.flume:flume-ng-sources</include>
-        <include>org.apache.flume:flume-ng-legacy-sources</include>
-        <include>org.apache.flume:flume-ng-clients</include>
-        <include>org.apache.flume:flume-ng-embedded-agent</include>
+        <include>org.apache.flume.flume-ng-clients:flume-ng-log4jappender:jar:jar-with-dependencies</include>
       </includes>
+    </dependencySet>
+  </dependencySets>
 
-      <binaries>
-        <unpack>false</unpack>
-        <outputDirectory>lib</outputDirectory>
-
-        <dependencySets>
-          <dependencySet>
-            <useProjectArtifact>false</useProjectArtifact>
-            <outputDirectory>lib</outputDirectory>
-          </dependencySet>
-        </dependencySets>
-      </binaries>
-
-      <sources>
-        <includeModuleDirectory>true</includeModuleDirectory>
-        <excludeSubModuleDirectories>false</excludeSubModuleDirectories>
-
-        <fileSets>
-          <fileSet>
-            <excludes>
-              <exclude>target/**</exclude>
-              <exclude>*/target/**</exclude>
-              <exclude>.classpath</exclude>
-              <exclude>*/.classpath</exclude>
-              <exclude>.project</exclude>
-              <exclude>*/.project</exclude>
-              <exclude>.settings/**</exclude>
-              <exclude>*/.settings/**</exclude>
-            </excludes>
-          </fileSet>
-        </fileSets>
-      </sources>
-
-    </moduleSet>
-
-  </moduleSets>
 
    <fileSets>
     <fileSet>
@@ -101,6 +67,7 @@
         <exclude>flume-ng-legacy-sources/**</exclude>
         <exclude>flume-ng-clients/**</exclude>
         <exclude>flume-ng-embedded-agent/**</exclude>
+        <exclude>flume-tools/**</exclude>
         <exclude>**/target/**</exclude>
         <exclude>**/.classpath</exclude>
         <exclude>**/.project</exclude>
@@ -109,7 +76,6 @@
       </excludes>
 
       <includes>
-        <include>.gitignore</include>
         <include>DEVNOTES</include>
         <include>README</include>
         <include>LICENSE</include>
@@ -118,9 +84,6 @@
         <include>RELEASE-NOTES</include>
         <include>bin/**</include>
         <include>conf/**</include>
-        <include>pom.xml</include>
-        <include>flume-ng-doc/**</include>
-        <include>flume-ng-tests/**</include>
       </includes>
     </fileSet>
 

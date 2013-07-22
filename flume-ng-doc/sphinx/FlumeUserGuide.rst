@@ -15,7 +15,7 @@
 
 
 ======================================
-Flume 1.4.0-SNAPSHOT User Guide
+Flume 1.4.0 User Guide
 ======================================
 
 Introduction
@@ -28,16 +28,32 @@ Apache Flume is a distributed, reliable, and available system for efficiently
 collecting, aggregating and moving large amounts of log data from many
 different sources to a centralized data store.
 
+The use of Apache Flume is not only restricted to log data aggregation. 
+Since data sources are customizable, Flume can be used to transport massive quantities
+of event data including but not limited to network traffic data, social-media-generated data, 
+email messages and pretty much any data source possible.
+
 Apache Flume is a top level project at the Apache Software Foundation.
+
 There are currently two release code lines available, versions 0.9.x and 1.x.
-This documentation applies to the 1.x codeline.
-Please click here for
+
+Documentation for the 0.9.x track is available at 
 `the Flume 0.9.x User Guide <http://archive.cloudera.com/cdh/3/flume/UserGuide/>`_.
+
+This documentation applies to the 1.4.x track.
+
+New and existing users are encouraged to use the 1.x releases so as to 
+leverage the performance improvements and configuration flexibilities available 
+in the latest architecture.
+
 
 System Requirements
 -------------------
 
-TBD
+#. Java Runtime Environment - Java 1.6 or later (Java 1.7 Recommended)
+#. Memory - Sufficient memory for configurations used by sources, channels or sinks
+#. Disk Space - Sufficient disk space for configurations used by channels or sinks
+#. Directory Permissions - Read/Write permissions for directories used by agent
 
 Architecture
 ------------
@@ -668,7 +684,7 @@ Avro Source
 ~~~~~~~~~~~
 
 Listens on Avro port and receives events from external Avro client streams.
-When paired with the built-in AvroSink on another (previous hop) Flume agent,
+When paired with the built-in Avro Sink on another (previous hop) Flume agent,
 it can create tiered collection topologies.
 Required properties are in **bold**.
 
@@ -685,6 +701,10 @@ selector.*
 interceptors         --           Space-separated list of interceptors
 interceptors.*
 compression-type     none         This can be "none" or "deflate".  The compression-type must match the compression-type of matching AvroSource
+ssl                  false        Set this to true to enable SSL encryption. You must also specify a "keystore" and a "keystore-password".
+keystore             --           This is the path to a Java keystore file. Required for SSL.
+keystore-password    --           The password for the Java keystore. Required for SSL.
+keystore-type        JKS          The type of the Java keystore. This can be "JKS" or "PKCS12".
 ==================   ===========  ===================================================
 
 Example for agent named a1:
@@ -813,7 +833,9 @@ JMS Source
 JMS Source reads messages from a JMS destination such as a queue or topic. Being a JMS
 application it should work with any JMS provider but has only been tested with ActiveMQ.
 The JMS source provides configurable batch size, message selector, user/pass, and message
-to flume event converter.
+to flume event converter. Note that the vendor provided JMS jars should be included in the
+Flume classpath using plugins.d directory (preferred), --classpath on command line, or
+via FLUME_CLASSPATH variable in flume-env.sh.
 
 Required properties are in **bold**.
 
@@ -823,6 +845,7 @@ Property Name               Default      Description
 **channels**                --
 **type**                    --           The component type name, needs to be ``jms``
 **initialContextFactory**   --           Inital Context Factory, e.g: org.apache.activemq.jndi.ActiveMQInitialContextFactory
+**connectionFactory**       --           The JNDI name the connection factory shoulld appear as
 **providerURL**             --           The JMS provider URL
 **destinationName**         --           Destination name
 **destinationType**         --           Destination type (queue or topic)
@@ -865,6 +888,7 @@ Example for agent named a1:
   a1.sources.r1.type = jms
   a1.sources.r1.channels = c1
   a1.sources.r1.initialContextFactory = org.apache.activemq.jndi.ActiveMQInitialContextFactory
+  a1.sources.r1.connectionFactory = GenericConnectionFactory
   a1.sources.r1.providerURL = tcp://mqserver:61616
   a1.sources.r1.destinationName = BUSINESS_DATA
   a1.sources.r1.destinationType = QUEUE
@@ -955,6 +979,46 @@ deserializer.maxLineLength      2048            Maximum number of characters to 
                                                 subsequent event.
 deserializer.outputCharset      UTF-8           Charset to use for encoding events put into the channel.
 ==============================  ==============  ==========================================================
+
+AVRO
+^^^^
+
+This deserializer is able to read an Avro container file, and it generates
+one event per Avro record in the file.
+Each event is annotated with a header that indicates the schema used.
+The body of the event is the binary Avro record data, not
+including the schema or the rest of the container file elements.
+
+Note that if the spool directory source must retry putting one of these events
+onto a channel (for example, because the channel is full), then it will reset
+and retry from the most recent Avro container file sync point. To reduce
+potential event duplication in such a failure scenario, write sync markers more
+frequently in your Avro input files.
+
+==============================  ==============  ======================================================================
+Property Name                   Default         Description
+==============================  ==============  ======================================================================
+deserializer.schemaType         HASH            How the schema is represented. By default, or when the value ``HASH``
+                                                is specified, the Avro schema is hashed and
+                                                the hash is stored in every event in the event header
+                                                "flume.avro.schema.hash". If ``LITERAL`` is specified, the JSON-encoded
+                                                schema itself is stored in every event in the event header
+                                                "flume.avro.schema.literal". Using ``LITERAL`` mode is relatively
+                                                inefficient compared to ``HASH`` mode.
+==============================  ==============  ======================================================================
+
+BlobDeserializer
+^^^^^^^^^^^^^^^^
+
+This deserializer reads a Binary Large Object (BLOB) per event, typically one BLOB per file. For example a PDF or JPG file. Note that this approach is not suitable for very large objects because the entire BLOB is buffered in RAM.
+
+==========================  ==================  =======================================================================
+Property Name               Default             Description
+==========================  ==================  =======================================================================
+**deserializer**            --                  The FQCN of this class: ``org.apache.flume.sink.solr.morphline.BlobDeserializer$Builder``
+deserializer.maxBlobLength  100000000           The maximum number of bytes to read and buffer for a given request
+==========================  ==================  =======================================================================
+
 
 NetCat Source
 ~~~~~~~~~~~~~
@@ -1152,6 +1216,7 @@ Property Name   Default                                       Description
 ==============  ============================================  ====================================================================
 **type**                                                      The component type name, needs to be ``http``
 **port**        --                                            The port the source should bind to.
+bind            0.0.0.0                                       The hostname or IP address to listen on
 handler         ``org.apache.flume.source.http.JSONHandler``  The FQCN of the handler class.
 handler.*       --                                            Config parameters for the handler
 selector.type   replicating                                   replicating or multiplexing
@@ -1166,7 +1231,7 @@ For example, a http source for agent named a1:
 
   a1.sources = r1
   a1.channels = c1
-  a1.sources.r1.type = org.apache.flume.source.http.HTTPSource
+  a1.sources.r1.type = http
   a1.sources.r1.port = 5140
   a1.sources.r1.channels = c1
   a1.sources.r1.handler = org.example.rest.RestHandler
@@ -1212,6 +1277,17 @@ for list of events can be created by:
 .. code-block:: java
 
   Type type = new TypeToken<List<JSONEvent>>() {}.getType();
+
+BlobHandler
+'''''''''''
+By default HTTPSource splits JSON input into Flume events. As an alternative, BlobHandler is a handler for HTTPSource that returns an event that contains the request parameters as well as the Binary Large Object (BLOB) uploaded with this request. For example a PDF or JPG file. Note that this approach is not suitable for very large objects because it buffers up the entire BLOB in RAM.
+
+=====================  ==================  ============================================================================
+Property Name          Default             Description
+=====================  ==================  ============================================================================
+**handler**            --                  The FQCN of this class: ``org.apache.flume.sink.solr.morphline.BlobHandler``
+handler.maxBlobLength  100000000           The maximum number of bytes to read and buffer for a given request
+=====================  ==================  ============================================================================
 
 Legacy Sources
 ~~~~~~~~~~~~~~
@@ -1425,7 +1501,7 @@ hdfs.fileType           SequenceFile  File format: currently ``SequenceFile``, `
                                       (2)CompressedStream requires set hdfs.codeC with an available codeC
 hdfs.maxOpenFiles       5000          Allow only this number of open files. If this number is exceeded, the oldest file is closed.
 hdfs.minBlockReplicas   --            Specify minimum number of replicas per HDFS block. If not specified, it comes from the default Hadoop config in the classpath.
-hdfs.writeFormat        --            "Text" or "Writable"
+hdfs.writeFormat        --            Format for sequence file records. One of "Text" or "Writable" (the default).
 hdfs.callTimeout        10000         Number of milliseconds allowed for HDFS operations, such as open, write, flush, close.
                                       This number should be increased if many HDFS timeout operations are occurring.
 hdfs.threadsPoolSize    10            Number of threads per HDFS sink for HDFS IO ops (open, write, etc.)
@@ -1505,7 +1581,12 @@ connect-timeout              20000    Amount of time (ms) to allow for the first
 request-timeout              20000    Amount of time (ms) to allow for requests after the first.
 reset-connection-interval    none     Amount of time (s) before the connection to the next hop is reset. This will force the Avro Sink to reconnect to the next hop. This will allow the sink to connect to hosts behind a hardware load-balancer when news hosts are added without having to restart the agent.
 compression-type             none     This can be "none" or "deflate".  The compression-type must match the compression-type of matching AvroSource
-compression-level            6	      The level of compression to compress event. 0 = no compression and 1-9 is compression.  The higher the number the more compression
+compression-level            6        The level of compression to compress event. 0 = no compression and 1-9 is compression.  The higher the number the more compression
+ssl                          false    Set to true to enable SSL for this AvroSink. When configuring SSL, you can optionally set a "truststore", "truststore-password", "truststore-type", and specify whether to "trust-all-certs".
+trust-all-certs              false    If this is set to true, SSL server certificates for remote servers (Avro Sources) will not be checked. This should NOT be used in production because it makes it easier for an attacker to execute a man-in-the-middle attack and "listen in" on the encrypted connection.
+truststore                   --       The path to a custom Java truststore file. Flume uses the certificate authority information in this file to determine whether the remote Avro Source's SSL authentication credentials should be trusted. If not specified, the default Java JSSE certificate authority files (typically "jssecacerts" or "cacerts" in the Oracle JRE) will be used.
+truststore-password          --       The password for the specified truststore.
+truststore-type              JKS      The type of the Java truststore. This can be "JKS" or other supported Java truststore type.
 ==========================   =======  ==============================================
 
 Example for agent named a1:
@@ -1676,11 +1757,11 @@ Required properties are in **bold**.
 Property Name       Default                                                 Description
 ==================  ======================================================  ==============================================================================
 **channel**         --
-**type**            --                                                      The component type name, needs to be ``org.apache.flume.sink.hbase.HBaseSink``
+**type**            --                                                      The component type name, needs to be ``hbase``
 **table**           --                                                      The name of the table in Hbase to write to.
 **columnFamily**    --                                                      The column family in Hbase to write to.
 batchSize           100                                                     Number of events to be written per txn.
-serializer          org.apache.flume.sink.hbase.SimpleHbaseEventSerializer
+serializer          org.apache.flume.sink.hbase.SimpleHbaseEventSerializer  Default increment column = "iCol", payload column = "pCol".
 serializer.*        --                                                      Properties to be passed to the serializer.
 kerberosPrincipal   --                                                      Kerberos user principal for accessing secure HBase
 kerberosKeytab      --                                                      Kerberos keytab for accessing secure HBase
@@ -1692,7 +1773,7 @@ Example for agent named a1:
 
   a1.channels = c1
   a1.sinks = k1
-  a1.sinks.k1.type = org.apache.flume.sink.hbase.HBaseSink
+  a1.sinks.k1.type = hbase
   a1.sinks.k1.table = foo_table
   a1.sinks.k1.columnFamily = bar_cf
   a1.sinks.k1.serializer = org.apache.flume.sink.hbase.RegexHbaseEventSerializer
@@ -1715,7 +1796,7 @@ Required properties are in **bold**.
 Property Name     Default                                                       Description
 ================  ============================================================  ====================================================================================
 **channel**       --
-**type**          --                                                            The component type name, needs to be ``org.apache.flume.sink.hbase.AsyncHBaseSink``
+**type**          --                                                            The component type name, needs to be ``asynchbase``
 **table**         --                                                            The name of the table in Hbase to write to.
 zookeeperQuorum   --                                                            The quorum spec. This is the value for the property ``hbase.zookeeper.quorum`` in hbase-site.xml
 znodeParent       /hbase                                                        The base path for the znode for the -ROOT- region. Value of ``zookeeper.znode.parent`` in hbase-site.xml
@@ -1741,38 +1822,48 @@ Example for agent named a1:
 
   a1.channels = c1
   a1.sinks = k1
-  a1.sinks.k1.type = org.apache.flume.sink.hbase.AsyncHBaseSink
+  a1.sinks.k1.type = asynchbase
   a1.sinks.k1.table = foo_table
   a1.sinks.k1.columnFamily = bar_cf
   a1.sinks.k1.serializer = org.apache.flume.sink.hbase.SimpleAsyncHbaseEventSerializer
   a1.sinks.k1.channel = c1
 
-ElasticSearchSink
-'''''''''''''''''
+MorphlineSolrSink
+~~~~~~~~~~~~~~~~~
 
-This sink writes data to ElasticSearch. A class implementing
-ElasticSearchEventSerializer which is specified by the configuration is used to convert the events into
-XContentBuilder which detail the fields and mappings which will be indexed. These are then then written
-to ElasticSearch. The sink will generate an index per day allowing easier management instead of dealing with
-a single large index
-The type is the FQCN: org.apache.flume.sink.elasticsearch.ElasticSearchSink
+This sink extracts data from Flume events, transforms it, and loads it in near-real-time into Apache Solr servers, which in turn serve queries to end users or search applications.
+
+This sink is well suited for use cases that stream raw data into HDFS (via the HdfsSink) and simultaneously extract, transform and load the same data into Solr (via MorphlineSolrSink). In particular, this sink can process arbitrary heterogeneous raw data from disparate data sources and turn it into a data model that is useful to Search applications.
+
+The ETL functionality is customizable using a `morphline configuration file <http://cloudera.github.io/cdk/docs/0.4.0/cdk-morphlines/index.html>`_ that defines a chain of transformation commands that pipe event records from one command to another. 
+
+Morphlines can be seen as an evolution of Unix pipelines where the data model is generalized to work with streams of generic records, including arbitrary binary payloads. A morphline command is a bit like a Flume Interceptor. Morphlines can be embedded into Hadoop components such as Flume.
+
+Commands to parse and transform a set of standard data formats such as log files, Avro, CSV, Text, HTML, XML, PDF, Word, Excel, etc. are provided out of the box, and additional custom commands and parsers for additional data formats can be added as morphline plugins. Any kind of data format can be indexed and any Solr documents for any kind of Solr schema can be generated, and any custom ETL logic can be registered and executed.
+
+Morphlines manipulate continuous streams of records. The data model can be described as follows: A record is a set of named fields where each field has an ordered list of one or more values. A value can be any Java Object. That is, a record is essentially a hash table where each hash table entry contains a String key and a list of Java Objects as values. (The implementation uses Guava's ``ArrayListMultimap``, which is a ``ListMultimap``). Note that a field can have multiple values and any two records need not use common field names. 
+
+This sink fills the body of the Flume event into the ``_attachment_body`` field of the morphline record, as well as copies the headers of the Flume event into record fields of the same name. The commands can then act on this data.
+
+Routing to a SolrCloud cluster is supported to improve scalability. Indexing load can be spread across a large number of MorphlineSolrSinks for improved scalability. Indexing load can be replicated across multiple MorphlineSolrSinks for high availability, for example using Flume features such as Load balancing Sink Processor. MorphlineInterceptor can also help to implement dynamic routing to multiple Solr collections (e.g. for multi-tenancy).
+
+The morphline and solr jars required for your environment must be placed in the lib directory of the Apache Flume installation. 
+
+The type is the FQCN: org.apache.flume.sink.solr.morphline.MorphlineSolrSink
+
 Required properties are in **bold**.
 
-================  ==================================================================  =======================================================================================================
-Property Name     Default                                                             Description
-================  ==================================================================  =======================================================================================================
-**channel**       --
-**type**          --                                                                  The component type name, needs to be ``org.apache.flume.sink.elasticsearch.ElasticSearchSink``
-**hostNames**     --                                                                  Comma separated list of hostname:port, if the port is not present the default port '9300' will be used
-indexName         flume                                                               The name of the index which the date will be appended to. Example 'flume' -> 'flume-yyyy-MM-dd'
-indexType         logs                                                                The type to index the document to, defaults to 'log'
-clusterName       elasticsearch                                                       Name of the ElasticSearch cluster to connect to
-batchSize         100                                                                 Number of events to be written per txn.
-ttl               --                                                                  TTL in days, when set will cause the expired documents to be deleted automatically,
-                                                                                      if not set documents will never be automatically deleted
-serializer        org.apache.flume.sink.elasticsearch.ElasticSearchDynamicSerializer
-serializer.*      --                                                                  Properties to be passed to the serializer.
-================  ==================================================================  =======================================================================================================
+===================  =======================================================================  ========================
+Property Name        Default                                                                  Description
+===================  =======================================================================  ========================
+**channel**          --
+**type**             --                                                                       The component type name, needs to be ``org.apache.flume.sink.solr.morphline.MorphlineSolrSink``
+**morphlineFile**    --                                                                       The relative or absolute path on the local file system to the morphline configuration file. Example: ``/etc/flume-ng/conf/morphline.conf``
+morphlineId          null                                                                     Optional name used to identify a morphline if there are multiple morphlines in a morphline config file
+batchSize            1000                                                                     The maximum number of events to take per flume transaction.
+batchDurationMillis  1000                                                                     The maximum duration per flume transaction (ms). The transaction commits after this duration or when batchSize is exceeded, whichever comes first.
+handlerClass         org.apache.flume.sink.solr.morphline.MorphlineHandlerImpl                The FQCN of a class implementing org.apache.flume.sink.solr.morphline.MorphlineHandler
+===================  =======================================================================  ========================
 
 Example for agent named a1:
 
@@ -1780,7 +1871,63 @@ Example for agent named a1:
 
   a1.channels = c1
   a1.sinks = k1
-  a1.sinks.k1.type = org.apache.flume.sink.elasticsearch.ElasticSearchSink
+  a1.sinks.k1.type = org.apache.flume.sink.solr.morphline.MorphlineSolrSink
+  a1.sinks.k1.channel = c1
+  a1.sinks.k1.morphlineFile = /etc/flume-ng/conf/morphline.conf
+  # a1.sinks.k1.morphlineId = morphline1
+  # a1.sinks.k1.batchSize = 1000
+  # a1.sinks.k1.batchDurationMillis = 1000
+
+ElasticSearchSink
+~~~~~~~~~~~~~~~~~
+
+This sink writes data to an elasticsearch cluster. By default, events will be written so that the `Kibana <http://kibana.org>`_ graphical interface
+can display them - just as if `logstash <https://logstash.net>`_ wrote them. 
+
+The elasticsearch and lucene-core jars required for your environment must be placed in the lib directory of the Apache Flume installation. 
+Elasticsearch requires that the major version of the client JAR match that of the server and that both are running the same minor version
+of the JVM. SerializationExceptions will appear if this is incorrect. To 
+select the required version first determine the version of elasticsearch and the JVM version the target cluster is running. Then select an elasticsearch client
+library which matches the major version. A 0.19.x client can talk to a 0.19.x cluster; 0.20.x can talk to 0.20.x and 0.90.x can talk to 0.90.x. Once the
+elasticsearch version has been determined then read the pom.xml file to determine the correct lucene-core JAR version to use. The Flume agent
+which is running the ElasticSearchSink should also match the JVM the target cluster is running down to the minor version.
+
+Events will be written to a new index every day. The name will be <indexName>-yyyy-MM-dd where <indexName> is the indexName parameter. The sink
+will start writing to a new index at midnight UTC.
+
+Events are serialized for elasticsearch by the ElasticSearchLogStashEventSerializer by default. This behaviour can be
+overridden with the serializer parameter. This parameter accepts implementations of org.apache.flume.sink.elasticsearch.ElasticSearchEventSerializer
+or org.apache.flume.sink.elasticsearch.ElasticSearchIndexRequestBuilderFactory. Implementing ElasticSearchEventSerializer is deprecated in favour of
+the more powerful ElasticSearchIndexRequestBuilderFactory.
+
+The type is the FQCN: org.apache.flume.sink.elasticsearch.ElasticSearchSink
+
+Required properties are in **bold**.
+
+================  ======================================================================== =======================================================================================================
+Property Name     Default                                                                  Description
+================  ======================================================================== =======================================================================================================
+**channel**       --
+**type**          --                                                                       The component type name, needs to be ``org.apache.flume.sink.elasticsearch.ElasticSearchSink``
+**hostNames**     --                                                                       Comma separated list of hostname:port, if the port is not present the default port '9300' will be used
+indexName         flume                                                                    The name of the index which the date will be appended to. Example 'flume' -> 'flume-yyyy-MM-dd'
+indexType         logs                                                                     The type to index the document to, defaults to 'log'
+clusterName       elasticsearch                                                            Name of the ElasticSearch cluster to connect to
+batchSize         100                                                                      Number of events to be written per txn.
+ttl               --                                                                       TTL in days, when set will cause the expired documents to be deleted automatically,
+                                                                                           if not set documents will never be automatically deleted
+serializer        org.apache.flume.sink.elasticsearch.ElasticSearchLogStashEventSerializer The ElasticSearchIndexRequestBuilderFactory or ElasticSearchEventSerializer to use. Implementations of
+                                                                                           either class are accepted but ElasticSearchIndexRequestBuilderFactory is preferred.
+serializer.*      --                                                                       Properties to be passed to the serializer.
+================  ======================================================================== =======================================================================================================
+
+Example for agent named a1:
+
+.. code-block:: properties
+
+  a1.channels = c1
+  a1.sinks = k1
+  a1.sinks.k1.type = elasticsearch
   a1.sinks.k1.hostNames = 127.0.0.1:9200,127.0.0.2:9300
   a1.sinks.k1.indexName = foo_index
   a1.sinks.k1.indexType = bar_type
@@ -1832,8 +1979,9 @@ Required properties are in **bold**.
 Property Name                 Default           Description
 ============================  ================  ===============================================================================
 **type**                      --                The component type name, needs to be ``memory``
-capacity                      100               The max number of events stored in the channel
-transactionCapacity           100               The max number of events stored in the channel per transaction
+capacity                      100               The maximum number of events stored in the channel
+transactionCapacity           100               The maximum number of events the channel will take from a source or give to a
+                                                sink per transaction
 keep-alive                    3                 Timeout in seconds for adding or removing an event
 byteCapacityBufferPercentage  20                Defines the percent of buffer between byteCapacity and the estimated total size
                                                 of all events in the channel, to account for data in headers. See below.
@@ -1856,7 +2004,11 @@ Example for agent named a1:
 
   a1.channels = c1
   a1.channels.c1.type = memory
-  a1.channels.c1.capacity = 1000
+  a1.channels.c1.capacity = 10000
+  a1.channels.c1.transactionCapacity = 10000
+  a1.channels.c1.byteCapacityBufferPercentage = 20
+  a1.channels.c1.byteCapacity = 800000
+  
 
 JDBC Channel
 ~~~~~~~~~~~~
@@ -1893,31 +2045,6 @@ Example for agent named a1:
 
   a1.channels = c1
   a1.channels.c1.type = jdbc
-
-Recoverable Memory Channel
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-.. warning:: The Recoverable Memory Channel has been deprecated
-             in favor of the FileChannel. FileChannel is durable channel
-             and performs better than the Recoverable Memory Channel.
-
-Required properties are in **bold**.
-
-======================  ===============================================  =========================================================================
-Property Name           Default                                          Description
-======================  ===============================================  =========================================================================
-**type**                --                                               The component type name, needs to be
-                                                                         ``org.apache.flume.channel.recoverable.memory.RecoverableMemoryChannel``
-wal.dataDir             ${user.home}/.flume/recoverable-memory-channel
-wal.rollSize            (0x04000000)                                     Max size (in bytes) of a single file before we roll
-wal.minRetentionPeriod  300000                                           Min amount of time (in millis) to keep a log
-wal.workerInterval      60000                                            How often (in millis) the background worker checks for old logs
-wal.maxLogsSize         (0x20000000)                                     Total amt (in bytes) of logs to keep, excluding the current log
-capacity                100
-transactionCapacity     100
-keep-alive              3
-======================  ===============================================  =========================================================================
 
 
 File Channel
@@ -2449,6 +2576,50 @@ Example for agent named a1:
   a1.sources.r1.interceptors.i1.key = datacenter
   a1.sources.r1.interceptors.i1.value = NEW_YORK
 
+UUID Interceptor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This interceptor sets a universally unique identifier on all events that are intercepted. An example UUID is ``b5755073-77a9-43c1-8fad-b7a586fc1b97``, which represents a 128-bit value.
+
+Consider using UUIDInterceptor to automatically assign a UUID to an event if no application level unique key for the event is available. It can be important to assign UUIDs to events as soon as they enter the Flume network; that is, in the first Flume Source of the flow. This enables subsequent deduplication of events in the face of replication and redelivery in a Flume network that is designed for high availability and high performance. If an application level key is available, this is preferable over an auto-generated UUID because it enables subsequent updates and deletes of event in data stores using said well known application level key.
+
+================  =======  ========================================================================
+Property Name     Default  Description
+================  =======  ========================================================================
+**type**          --       The component type name has to be ``org.apache.flume.sink.solr.morphline.UUIDInterceptor$Builder``
+headerName        id       The name of the Flume header to modify
+preserveExisting  true     If the UUID header already exists, should it be preserved - true or false
+prefix            ""       The prefix string constant to prepend to each generated UUID
+================  =======  ========================================================================
+
+Morphline Interceptor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This interceptor filters the events through a `morphline configuration file <http://cloudera.github.io/cdk/docs/0.4.0/cdk-morphlines/index.html>`_ that defines a chain of transformation commands that pipe records from one command to another.
+For example the morphline can ignore certain events or alter or insert certain event headers via regular expression based pattern matching, or it can auto-detect and set a MIME type via Apache Tika on events that are intercepted. For example, this kind of packet sniffing can be used for content based dynamic routing in a Flume topology.
+MorphlineInterceptor can also help to implement dynamic routing to multiple Apache Solr collections (e.g. for multi-tenancy).
+
+Currently, there is a restriction in that the morphline of an interceptor must not generate more than one output record for each input event. This interceptor is not intended for heavy duty ETL processing - if you need this consider moving ETL processing from the Flume Source to a Flume Sink, e.g. to a MorphlineSolrSink.
+
+Required properties are in **bold**.
+
+=================  =======  ========================================================================
+Property Name      Default  Description
+=================  =======  ========================================================================
+**type**           --       The component type name has to be ``org.apache.flume.sink.solr.morphline.MorphlineInterceptor$Builder``
+**morphlineFile**  --       The relative or absolute path on the local file system to the morphline configuration file. Example: ``/etc/flume-ng/conf/morphline.conf``
+morphlineId        null     Optional name used to identify a morphline if there are multiple morphlines in a morphline config file
+=================  =======  ========================================================================
+
+Sample flume.conf file:
+
+.. code-block:: properties
+
+  a1.sources.avroSrc.interceptors = morphlineinterceptor
+  a1.sources.avroSrc.interceptors.morphlineinterceptor.type = org.apache.flume.sink.solr.morphline.MorphlineInterceptor$Builder
+  a1.sources.avroSrc.interceptors.morphlineinterceptor.morphlineFile = /etc/flume-ng/conf/morphline.conf
+  a1.sources.avroSrc.interceptors.morphlineinterceptor.morphlineId = morphline1
+
 Regex Filtering Interceptor
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2560,16 +2731,21 @@ Log4J Appender
 
 Appends Log4j events to a flume agent's avro source. A client using this
 appender must have the flume-ng-sdk in the classpath (eg,
-flume-ng-sdk-1.4.0-SNAPSHOT.jar).
+flume-ng-sdk-1.4.0.jar).
 Required properties are in **bold**.
 
-=============  =======  ==========================================================================
-Property Name  Default  Description
-=============  =======  ==========================================================================
-Hostname       --       The hostname on which a remote Flume agent is running with an avro source.
-Port           --       The port at which the remote Flume agent's avro source is listening.
-=============  =======  ==========================================================================
-
+=====================  =======  ==============================================================
+Property Name          Default  Description
+=====================  =======  ==============================================================
+**Hostname**           --       The hostname on which a remote Flume agent is running with an
+                                avro source.
+**Port**               --       The port at which the remote Flume agent's avro source is
+                                listening.
+UnsafeMode             false    If true, the appender will not throw exceptions on failure to
+                                send the events.
+AvroReflectionEnabled  false    Use Avro Reflection to serialize Log4j events.
+AvroSchemaUrl          --       A URL from which the Avro schema can be retrieved.
+=====================  =======  ==============================================================
 
 Sample log4j.properties file:
 
@@ -2579,32 +2755,67 @@ Sample log4j.properties file:
   log4j.appender.flume = org.apache.flume.clients.log4jappender.Log4jAppender
   log4j.appender.flume.Hostname = example.com
   log4j.appender.flume.Port = 41414
+  log4j.appender.flume.UnsafeMode = true
 
   # configure a class's logger to output to the flume appender
   log4j.logger.org.example.MyClass = DEBUG,flume
   #...
+
+By default each event is converted to a string by calling ``toString()``,
+or by using the Log4j layout, if specified.
+
+If the event is an instance of
+``org.apache.avro.generic.GenericRecord``, ``org.apache.avro.specific.SpecificRecord``,
+or if the property ``AvroReflectionEnabled`` is set to ``true`` then the event will be
+serialized using Avro serialization.
+
+Serializing every event with its Avro schema is inefficient, so it is good practice to
+provide a schema URL from which the schema can be retrieved by the downstream sink,
+typically the HDFS sink. If ``AvroSchemaUrl`` is not specified,
+then the schema will be included as a Flume header.
+
+Sample log4j.properties file configured to use Avro serialization:
+
+.. code-block:: properties
+
+  #...
+  log4j.appender.flume = org.apache.flume.clients.log4jappender.Log4jAppender
+  log4j.appender.flume.Hostname = example.com
+  log4j.appender.flume.Port = 41414
+  log4j.appender.flume.AvroReflectionEnabled = true
+  log4j.appender.flume.AvroSchemaUrl = hdfs://namenode/path/to/schema.avsc
+
+  # configure a class's logger to output to the flume appender
+  log4j.logger.org.example.MyClass = DEBUG,flume
+  #...
+
 
 Load Balancing Log4J Appender
 =============================
 
 Appends Log4j events to a list of flume agent's avro source. A client using this
 appender must have the flume-ng-sdk in the classpath (eg,
-flume-ng-sdk-1.4.0-SNAPSHOT.jar). This appender supports a round-robin and random
+flume-ng-sdk-1.4.0.jar). This appender supports a round-robin and random
 scheme for performing the load balancing. It also supports a configurable backoff
 timeout so that down agents are removed temporarily from the set of hosts
 Required properties are in **bold**.
 
-=============  ===========  ==========================================================================
-Property Name  Default      Description
-=============  ===========  ==========================================================================
-**Hosts**      --           A space-separated list of host:port
-                            at which Flume (through an AvroSource) is listening for events
-Selector       ROUND_ROBIN  Selection mechanism. Must be either ROUND_ROBIN,
-                            RANDOM or custom FQDN to class that inherits from LoadBalancingSelector.
-MaxBackoff     --           A long value representing the maximum amount of time in milliseconds
-                            the Load balancing client will backoff from a node that has failed to
-                            consume an event. Defaults to no backoff
-=============  ===========  ==========================================================================
+=====================  ===========  ==============================================================
+Property Name          Default      Description
+=====================  ===========  ==============================================================
+**Hosts**              --           A space-separated list of host:port at which Flume (through
+                                    an AvroSource) is listening for events
+Selector               ROUND_ROBIN  Selection mechanism. Must be either ROUND_ROBIN,
+                                    RANDOM or custom FQDN to class that inherits from
+                                    LoadBalancingSelector.
+MaxBackoff             --           A long value representing the maximum amount of time in
+                                    milliseconds the Load balancing client will backoff from a
+                                    node that has failed to consume an event. Defaults to no backoff
+UnsafeMode             false        If true, the appender will not throw exceptions on failure to
+                                    send the events.
+AvroReflectionEnabled  false        Use Avro Reflection to serialize Log4j events.
+AvroSchemaUrl          --           A URL from which the Avro schema can be retrieved.
+=====================  ===========  ==============================================================
 
 
 Sample log4j.properties file configured using defaults:
@@ -2952,7 +3163,6 @@ Component Interface                                           Type Alias        
 ============================================================  ======================  ====================================================================
 org.apache.flume.Channel                                      memory                  org.apache.flume.channel.MemoryChannel
 org.apache.flume.Channel                                      jdbc                    org.apache.flume.channel.jdbc.JdbcChannel
-org.apache.flume.Channel                                      recoverablememory       org.apache.flume.channel.recoverable.memory.RecoverableMemoryChannel
 org.apache.flume.Channel                                      file                    org.apache.flume.channel.file.FileChannel
 org.apache.flume.Channel                                      --                      org.apache.flume.channel.PseudoTxnMemoryChannel
 org.apache.flume.Channel                                      --                      org.example.MyChannel
@@ -2964,6 +3174,10 @@ org.apache.flume.Source                                       exec              
 org.apache.flume.Source                                       syslogtcp               org.apache.flume.source.SyslogTcpSource
 org.apache.flume.Source                                       multiport_syslogtcp     org.apache.flume.source.MultiportSyslogTCPSource
 org.apache.flume.Source                                       syslogudp               org.apache.flume.source.SyslogUDPSource
+org.apache.flume.Source                                       spooldir                org.apache.flume.source.SpoolDirectorySource
+org.apache.flume.Source                                       http                    org.apache.flume.source.http.HTTPSource
+org.apache.flume.Source                                       thrift                  org.apache.flume.source.ThriftSource
+org.apache.flume.Source                                       jms                     org.apache.flume.source.jms.JMSSource
 org.apache.flume.Source                                       --                      org.apache.flume.source.avroLegacy.AvroLegacySource
 org.apache.flume.Source                                       --                      org.apache.flume.source.thriftLegacy.ThriftLegacySource
 org.apache.flume.Source                                       --                      org.example.MySource
@@ -2972,11 +3186,12 @@ org.apache.flume.Sink                                         null              
 org.apache.flume.Sink                                         logger                  org.apache.flume.sink.LoggerSink
 org.apache.flume.Sink                                         avro                    org.apache.flume.sink.AvroSink
 org.apache.flume.Sink                                         hdfs                    org.apache.flume.sink.hdfs.HDFSEventSink
-org.apache.flume.Sink                                         --                      org.apache.flume.sink.hbase.HBaseSink
-org.apache.flume.Sink                                         --                      org.apache.flume.sink.hbase.AsyncHBaseSink
-org.apache.flume.Sink                                         --                      org.apache.flume.sink.elasticsearch.ElasticSearchSink
+org.apache.flume.Sink                                         hbase                   org.apache.flume.sink.hbase.HBaseSink
+org.apache.flume.Sink                                         asynchbase              org.apache.flume.sink.hbase.AsyncHBaseSink
+org.apache.flume.Sink                                         elasticsearch           org.apache.flume.sink.elasticsearch.ElasticSearchSink
 org.apache.flume.Sink                                         file_roll               org.apache.flume.sink.RollingFileSink
 org.apache.flume.Sink                                         irc                     org.apache.flume.sink.irc.IRCSink
+org.apache.flume.Sink                                         thrift                  org.apache.flume.sink.ThriftSink
 org.apache.flume.Sink                                         --                      org.example.MySink
 
 org.apache.flume.ChannelSelector                              replicating             org.apache.flume.channel.ReplicatingChannelSelector
