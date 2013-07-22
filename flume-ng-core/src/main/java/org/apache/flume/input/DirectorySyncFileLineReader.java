@@ -55,7 +55,7 @@ public class DirectorySyncFileLineReader {
   /** Always contains the last file from which lines have been read. * */
   private Optional<ResumableFileLineReader> lastFileRead = Optional.absent();
   private boolean committed = true;
-  /** A flag to signal an un-recoverable error has occured. */
+  /** A flag to signal an un-recoverable error has occurred. */
   private boolean disabled = false;
 
   /**

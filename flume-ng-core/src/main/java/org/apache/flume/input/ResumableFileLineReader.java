@@ -52,7 +52,7 @@ public class ResumableFileLineReader {
 
   /**
    * @param file                    to read
-   * @param fileEnded               hinted by revoker, if true, then this file
+   * @param fileEnded               hinted by caller, if true, then this file
    *                                should be treated as ended, no more reading
    *                                after this batch. if false, always reading
    *                                from this file
@@ -69,8 +69,6 @@ public class ResumableFileLineReader {
     if (file.isDirectory())
       throw new IOException("file '" + file + "' is a directory");
     ch = new FileInputStream(file).getChannel();
-    bb = ByteBuffer.allocateDirect(128 * 1024); // 128K
-    bb.limit(0);
     lineOut = new ByteArrayOutputStream(200);
     this.skipLF = false;
     this.fileEnded = fileEnded;
@@ -132,6 +130,11 @@ public class ResumableFileLineReader {
     /* this file was already marked as finished, EOF now */
     if (finished || damaged || eof) return null;
     ensureOpen();
+
+    if (null == bb) {
+      bb = ByteBuffer.allocate(128 * 1024); // 128K
+      bb.limit(0); // set it as full
+    }
 
     lineOut.reset();
     while (true) {
