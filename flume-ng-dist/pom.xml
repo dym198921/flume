@@ -24,7 +24,7 @@
   <parent>
     <artifactId>flume-parent</artifactId>
     <groupId>org.apache.flume</groupId>
-    <version>1.3.1</version>
+    <version>1.4.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>flume-ng-dist</artifactId>
@@ -78,6 +78,10 @@
     </dependency>
     <dependency>
       <groupId>org.apache.flume</groupId>
+      <artifactId>flume-ng-embedded-agent</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.flume</groupId>
       <artifactId>flume-ng-node</artifactId>
     </dependency>
     <dependency>
@@ -111,6 +115,10 @@
     <dependency>
       <groupId>org.apache.flume.flume-ng-sources</groupId>
       <artifactId>flume-scribe-source</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.flume.flume-ng-sources</groupId>
+      <artifactId>flume-jms-source</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.flume.flume-ng-legacy-sources</groupId>

@@ -85,6 +85,20 @@ public enum SourceType {
   SPOOLDIR("org.apache.flume.source.SpoolDirectorySource"),
 
   /**
+   * HTTP Source
+   *
+   * @see org.apache.flume.source.http.HTTPSource
+   */
+  HTTP("org.apache.flume.source.http.HTTPSource"),
+
+  /**
+   * Spool directory source
+   *
+   * @see org.apache.flume.source.ThriftSource
+   */
+  THRIFT("org.apache.flume.source.ThriftSource"),
+
+  /**
    * Sync directory source
    *
    * @see org.apache.flume.source.SyncDirectorySource

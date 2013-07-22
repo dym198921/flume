@@ -19,8 +19,11 @@
 
 package org.apache.flume.sink;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
@@ -28,22 +31,30 @@ import java.util.concurrent.atomic.AtomicLong;
 import com.google.common.base.Charsets;
 import org.apache.avro.AvroRemoteException;
 import org.apache.avro.ipc.NettyServer;
+import org.apache.avro.ipc.NettyTransceiver;
 import org.apache.avro.ipc.Server;
+import org.apache.avro.ipc.specific.SpecificRequestor;
 import org.apache.avro.ipc.specific.SpecificResponder;
 import org.apache.flume.Channel;
+import org.apache.flume.ChannelSelector;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.EventDeliveryException;
 import org.apache.flume.Sink;
 import org.apache.flume.Transaction;
+import org.apache.flume.channel.ChannelProcessor;
+import org.apache.flume.api.RpcClient;
 import org.apache.flume.channel.MemoryChannel;
+import org.apache.flume.channel.ReplicatingChannelSelector;
 import org.apache.flume.conf.Configurables;
 import org.apache.flume.event.EventBuilder;
 import org.apache.flume.lifecycle.LifecycleController;
 import org.apache.flume.lifecycle.LifecycleState;
+import org.apache.flume.source.AvroSource;
 import org.apache.flume.source.avro.AvroFlumeEvent;
 import org.apache.flume.source.avro.AvroSourceProtocol;
 import org.apache.flume.source.avro.Status;
+import org.jboss.netty.channel.ChannelException;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -60,8 +71,13 @@ public class TestAvroSink {
   private AvroSink sink;
   private Channel channel;
 
-  @Before
+
   public void setUp() {
+    setUp("none", 0);
+  }
+
+  public void setUp(String compressionType, int compressionLevel) {
+    if (sink != null) { throw new RuntimeException("double setup");}
     sink = new AvroSink();
     channel = new MemoryChannel();
 
@@ -72,6 +88,10 @@ public class TestAvroSink {
     context.put("batch-size", String.valueOf(2));
     context.put("connect-timeout", String.valueOf(2000L));
     context.put("request-timeout", String.valueOf(3000L));
+    if (compressionType.equals("deflate")) {
+      context.put("compression-type", compressionType);
+      context.put("compression-level", Integer.toString(compressionLevel));
+    }
 
     sink.setChannel(channel);
 
@@ -82,6 +102,7 @@ public class TestAvroSink {
   @Test
   public void testLifecycle() throws InterruptedException,
       InstantiationException, IllegalAccessException {
+    setUp();
     Server server = createServer(new MockAvroServer());
 
     server.start();
@@ -100,6 +121,7 @@ public class TestAvroSink {
   @Test
   public void testProcess() throws InterruptedException,
       EventDeliveryException, InstantiationException, IllegalAccessException {
+    setUp();
 
     Event event = EventBuilder.withBody("test event 1", Charsets.UTF_8);
     Server server = createServer(new MockAvroServer());
@@ -136,6 +158,7 @@ public class TestAvroSink {
   @Test
   public void testTimeout() throws InterruptedException,
       EventDeliveryException, InstantiationException, IllegalAccessException {
+    setUp();
     Event event = EventBuilder.withBody("foo", Charsets.UTF_8);
     AtomicLong delay = new AtomicLong();
     Server server = createServer(new DelayMockAvroServer(delay));
@@ -192,6 +215,7 @@ public class TestAvroSink {
   public void testFailedConnect() throws InterruptedException,
       EventDeliveryException, InstantiationException, IllegalAccessException {
 
+    setUp();
     Event event = EventBuilder.withBody("test event 1",
         Charset.forName("UTF8"));
     Server server = createServer(new MockAvroServer());
@@ -241,13 +265,194 @@ public class TestAvroSink {
     server.close();
   }
 
+  @Test
+  public void testReset() throws Exception {
+
+    setUp();
+    Server server = createServer(new MockAvroServer());
+
+    server.start();
+
+    Context context = new Context();
+
+    context.put("hostname", hostname);
+    context.put("port", String.valueOf(port));
+    context.put("batch-size", String.valueOf(2));
+    context.put("connect-timeout", String.valueOf(2000L));
+    context.put("request-timeout", String.valueOf(3000L));
+    context.put("reset-connection-interval", String.valueOf("5"));
+
+    sink.setChannel(channel);
+    Configurables.configure(sink, context);
+    sink.start();
+    RpcClient firstClient = sink.getUnderlyingClient();
+    Thread.sleep(6000);
+    // Make sure they are not the same object, connection should be reset
+    Assert.assertFalse(firstClient == sink.getUnderlyingClient());
+    sink.stop();
+
+    context.put("hostname", hostname);
+    context.put("port", String.valueOf(port));
+    context.put("batch-size", String.valueOf(2));
+    context.put("connect-timeout", String.valueOf(2000L));
+    context.put("request-timeout", String.valueOf(3000L));
+    context.put("reset-connection-interval", String.valueOf("0"));
+
+    sink.setChannel(channel);
+    Configurables.configure(sink, context);
+    sink.start();
+    firstClient = sink.getUnderlyingClient();
+    Thread.sleep(6000);
+    // Make sure they are the same object, since connection should not be reset
+    Assert.assertTrue(firstClient == sink.getUnderlyingClient());
+    sink.stop();
+
+    context.clear();
+    context.put("hostname", hostname);
+    context.put("port", String.valueOf(port));
+    context.put("batch-size", String.valueOf(2));
+    context.put("connect-timeout", String.valueOf(2000L));
+    context.put("request-timeout", String.valueOf(3000L));
+
+    sink.setChannel(channel);
+    Configurables.configure(sink, context);
+    sink.start();
+    firstClient = sink.getUnderlyingClient();
+    Thread.sleep(6000);
+    // Make sure they are the same object, since connection should not be reset
+    Assert.assertTrue(firstClient == sink.getUnderlyingClient());
+    sink.stop();
+    server.close();
+  }
+
   private Server createServer(AvroSourceProtocol protocol)
       throws IllegalAccessException, InstantiationException {
+
     Server server = new NettyServer(new SpecificResponder(
         AvroSourceProtocol.class, protocol), new InetSocketAddress(
         hostname, port));
 
     return server;
+  }
+
+  @Test
+  public void testRequestWithNoCompression() throws InterruptedException, IOException, EventDeliveryException {
+
+    doRequest(false, false, 6);
+  }
+
+  @Test
+  public void testRequestWithCompressionOnClientAndServerOnLevel0() throws InterruptedException, IOException, EventDeliveryException {
+
+    doRequest(true, true, 0);
+  }
+
+  @Test
+  public void testRequestWithCompressionOnClientAndServerOnLevel1() throws InterruptedException, IOException, EventDeliveryException {
+
+    doRequest(true, true, 1);
+  }
+
+  @Test
+  public void testRequestWithCompressionOnClientAndServerOnLevel6() throws InterruptedException, IOException, EventDeliveryException {
+
+    doRequest(true, true, 6);
+  }
+
+  @Test
+  public void testRequestWithCompressionOnClientAndServerOnLevel9() throws InterruptedException, IOException, EventDeliveryException {
+
+    doRequest(true, true, 9);
+  }
+
+  private void doRequest(boolean serverEnableCompression, boolean clientEnableCompression, int compressionLevel) throws InterruptedException, IOException, EventDeliveryException {
+
+    if (clientEnableCompression) {
+      setUp("deflate", compressionLevel);
+    } else {
+      setUp("none", compressionLevel);
+    }
+
+    boolean bound = false;
+
+    AvroSource source;
+    Channel sourceChannel;
+    int selectedPort;
+
+    source = new AvroSource();
+    sourceChannel = new MemoryChannel();
+
+    Configurables.configure(sourceChannel, new Context());
+
+    List<Channel> channels = new ArrayList<Channel>();
+    channels.add(sourceChannel);
+
+    ChannelSelector rcs = new ReplicatingChannelSelector();
+    rcs.setChannels(channels);
+
+    source.setChannelProcessor(new ChannelProcessor(rcs));
+
+    Context context = new Context();
+    context.put("port", port.toString());
+    context.put("bind", hostname);
+    context.put("threads", "50");
+    if (serverEnableCompression) {
+      context.put("compression-type", "deflate");
+    } else {
+      context.put("compression-type", "none");
+    }
+
+    Configurables.configure(source, context);
+
+    source.start();
+
+    Assert
+        .assertTrue("Reached start or error", LifecycleController.waitForOneOf(
+            source, LifecycleState.START_OR_ERROR));
+    Assert.assertEquals("Server is started", LifecycleState.START,
+        source.getLifecycleState());
+
+
+    Event event = EventBuilder.withBody("Hello avro",
+        Charset.forName("UTF8"));
+
+    sink.start();
+
+    Transaction sickTransaction = channel.getTransaction();
+
+    sickTransaction.begin();
+    for (int i = 0; i < 10; i++) {
+      channel.put(event);
+    }
+    sickTransaction.commit();
+    sickTransaction.close();
+
+    for (int i = 0; i < 5; i++) {
+      Sink.Status status = sink.process();
+      logger.debug("Calling Process " + i + " times:" + status);
+      Assert.assertEquals(Sink.Status.READY, status);
+    }
+
+    sink.stop();
+
+
+    Transaction sourceTransaction = sourceChannel.getTransaction();
+    sourceTransaction.begin();
+
+    Event sourceEvent = sourceChannel.take();
+    Assert.assertNotNull(sourceEvent);
+    Assert.assertEquals("Channel contained our event", "Hello avro",
+        new String(sourceEvent.getBody()));
+    sourceTransaction.commit();
+    sourceTransaction.close();
+
+    logger.debug("Round trip event:{}", sourceEvent);
+
+    source.stop();
+    Assert.assertTrue("Reached stop or error",
+        LifecycleController.waitForOneOf(source, LifecycleState.STOP_OR_ERROR));
+    Assert.assertEquals("Server is stopped", LifecycleState.STOP,
+        source.getLifecycleState());
   }
 
   private static class MockAvroServer implements AvroSourceProtocol {

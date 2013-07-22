@@ -35,13 +35,35 @@ public class SpoolDirectorySourceConfigurationConstants {
 
   /** What size to batch with before sending to ChannelProcessor. */
   public static final String BATCH_SIZE = "batchSize";
-  public static final int DEFAULT_BATCH_SIZE = 10;
+  public static final int DEFAULT_BATCH_SIZE = 100;
 
   /** Maximum number of lines to buffer between commits. */
+  @Deprecated
   public static final String BUFFER_MAX_LINES = "bufferMaxLines";
+  @Deprecated
   public static final int DEFAULT_BUFFER_MAX_LINES = 100;
 
   /** Maximum length of line (in characters) in buffer between commits. */
+  @Deprecated
   public static final String BUFFER_MAX_LINE_LENGTH = "bufferMaxLineLength";
+  @Deprecated
   public static final int DEFAULT_BUFFER_MAX_LINE_LENGTH = 5000;
+
+  /** Pattern of files to ignore */
+  public static final String IGNORE_PAT = "ignorePattern";
+  public static final String DEFAULT_IGNORE_PAT = "^$"; // no effect
+
+  /** Directory to store metadata about files being processed */
+  public static final String TRACKER_DIR = "trackerDir";
+  public static final String DEFAULT_TRACKER_DIR = ".flumespool";
+
+  /** Deserializer to use to parse the file data into Flume Events */
+  public static final String DESERIALIZER = "deserializer";
+  public static final String DEFAULT_DESERIALIZER = "LINE";
+
+  public static final String DELETE_POLICY = "deletePolicy";
+  public static final String DEFAULT_DELETE_POLICY = "never";
+
+  public static final String INPUT_CHARSET = "inputCharset";
+  public static final String DEFAULT_INPUT_CHARSET = "UTF-8";
 }

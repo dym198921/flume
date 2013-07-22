@@ -15,7 +15,7 @@
 
 
 ======================================
-Flume 1.3.0 User Guide
+Flume 1.4.0-SNAPSHOT User Guide
 ======================================
 
 Introduction
@@ -58,7 +58,10 @@ A Flume source consumes events delivered to it by an external source like a web
 server. The external source sends events to Flume in a format that is
 recognized by the target Flume source. For example, an Avro Flume source can be
 used to receive Avro events from Avro clients or other Flume agents in the flow
-that send events from an Avro sink. When a Flume source receives an event, it
+that send events from an Avro sink. A similar flow can be defined using
+a Thrift Flume Source to receive events from a Thrift Sink or a Flume
+Thrift Rpc Client or Thrift clients written in any language generated from
+the Flume thrift protocol.When a Flume source receives an event, it
 stores it into one or more channels. The channel is a passive store that keeps
 the event until it's consumed by a Flume sink. The file channel is one example
 -- it is backed by the local filesystem. The sink removes the event
@@ -183,12 +186,12 @@ This configuration lets a user generate events and subsequently logs them to the
 
 This configuration defines a single agent named a1. a1 has a source that listens for data on port 44444, a channel
 that buffers event data in memory, and a sink that logs event data to the console. The configuration file names the
-various components, then describes their types and configuration parameters. A given configuration file might define 
+various components, then describes their types and configuration parameters. A given configuration file might define
 several named agents; when a given Flume process is launched a flag is passed telling it which named agent to manifest.
 
 Given this configuration file, we can start Flume as follows::
 
-  $ bin/flume-ng agent --conf-file example.conf --name a1 -Dflume.root.logger=INFO,console
+  $ bin/flume-ng agent --conf conf --conf-file example.conf --name a1 -Dflume.root.logger=INFO,console
 
 Note that in a full deployment we would typically include one more option: ``--conf=<conf-dir>``.
 The ``<conf-dir>`` directory would include a shell script *flume-env.sh* and potentially a log4j properties file.
@@ -214,6 +217,51 @@ The original Flume terminal will output the event in a log message.
   12/06/19 15:32:34 INFO sink.LoggerSink: Event: { headers:{} body: 48 65 6C 6C 6F 20 77 6F 72 6C 64 21 0D          Hello world!. }
 
 Congratulations - you've successfully configured and deployed a Flume agent! Subsequent sections cover agent configuration in much more detail.
+
+Installing third-party plugins
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Flume has a fully plugin-based architecture. While Flume ships with many
+out-of-the-box sources, channels, sinks, serializers, and the like, many
+implementations exist which ship separately from Flume.
+
+While it has always been possible to include custom Flume components by
+adding their jars to the FLUME_CLASSPATH variable in the flume-env.sh file,
+Flume now supports a special directory called ``plugins.d`` which automatically
+picks up plugins that are packaged in a specific format. This allows for easier
+management of plugin packaging issues as well as simpler debugging and
+troubleshooting of several classes of issues, especially library dependency
+conflicts.
+
+The plugins.d directory
+'''''''''''''''''''''''
+
+The ``plugins.d`` directory is located at ``$FLUME_HOME/plugins.d``. At startup
+time, the ``flume-ng`` start script looks in the ``plugins.d`` directory for
+plugins that conform to the below format and includes them in proper paths when
+starting up ``java``.
+
+Directory layout for plugins
+''''''''''''''''''''''''''''
+
+Each plugin (subdirectory) within ``plugins.d`` can have up to three
+sub-directories:
+
+#. lib - the plugin's jar(s)
+#. libext - the plugin's dependency jar(s)
+#. native - any required native libraries, such as ``.so`` files
+
+Example of two plugins within the plugins.d directory:
+
+.. code-block:: none
+
+  plugins.d/
+  plugins.d/custom-source-1/
+  plugins.d/custom-source-1/lib/my-source.jar
+  plugins.d/custom-source-1/libext/spring-core-2.5.6.jar
+  plugins.d/custom-source-2/
+  plugins.d/custom-source-2/lib/custom.jar
+  plugins.d/custom-source-2/native/gettext.so
 
 Data ingestion
 --------------
@@ -247,6 +295,7 @@ Flume supports the following mechanisms to read data from popular log stream
 types, such as:
 
 #. Avro
+#. Thrift
 #. Syslog
 #. Netcat
 
@@ -266,7 +315,7 @@ Consolidation
 
 A very common scenario in log collection is a large number of log producing
 clients sending data to a few consumer agents that are attached to the storage
-subsystem. For examples, logs collected from hundreds of web servers sent to a
+subsystem. For example, logs collected from hundreds of web servers sent to a
 dozen of agents that write to HDFS cluster.
 
 .. figure:: images/UserGuide_image02.png
@@ -274,9 +323,10 @@ dozen of agents that write to HDFS cluster.
    :alt: A fan-in flow using Avro RPC to consolidate events in one place
 
 This can be achieved in Flume by configuring a number of first tier agents with
-an avro sink, all pointing to an avro source of single agent. This source on
-the second tier agent consolidates the received events into a single channel
-which is consumed by a sink to its final destination.
+an avro sink, all pointing to an avro source of single agent (Again you could
+use the thrift sources/sinks/clients in such a scenario). This source
+on the second tier agent consolidates the received events into a single
+channel which is consumed by a sink to its final destination.
 
 Multiplexing the flow
 ---------------------
@@ -311,7 +361,7 @@ Defining the flow
 To define the flow within a single agent, you need to link the sources and
 sinks via a channel. You need to list the sources, sinks and channels for the
 given agent, and then point the source and sink to a channel. A source instance
-can specify multiple channels, but a sink instance can only specify on channel.
+can specify multiple channels, but a sink instance can only specify one channel.
 The format is as follows:
 
 .. code-block:: properties
@@ -327,7 +377,7 @@ The format is as follows:
   # set channel for sink
   <Agent>.sinks.<Sink>.channel = <Channel1>
 
-For example an agent named agent_foo is reading data from an external avro client and sending
+For example, an agent named agent_foo is reading data from an external avro client and sending
 it to HDFS via a memory channel. The config file weblog.config could look like:
 
 .. code-block:: properties
@@ -436,9 +486,9 @@ config to do that:
 Configuring a multi agent flow
 ------------------------------
 
-To setup a multi-tier flow, you need to have an avro sink of first hop pointing
-to avro source of the next hop. This will result in the first Flume agent
-forwarding events to the next Flume agent. For example, if you are
+To setup a multi-tier flow, you need to have an avro/thrift sink of first hop
+pointing to avro/thrift source of the next hop. This will result in the first
+Flume agent forwarding events to the next Flume agent. For example, if you are
 periodically sending files (1 file per event) using avro client to a local
 Flume agent, then this local agent can forward it to another agent that has the
 mounted for storage.
@@ -495,15 +545,15 @@ from the external appserver source eventually getting stored in HDFS.
 Fan out flow
 ------------
 
-As discussed in previous section, Flume support fanning out the flow from one
+As discussed in previous section, Flume supports fanning out the flow from one
 source to multiple channels. There are two modes of fan out, replicating and
-multiplexing. In the replicating flow the event is sent to all the configured
+multiplexing. In the replicating flow, the event is sent to all the configured
 channels. In case of multiplexing, the event is sent to only a subset of
 qualifying channels. To fan out the flow, one needs to specify a list of
 channels for a source and the policy for the fanning it out. This is done by
 adding a channel "selector" that can be replicating or multiplexing. Then
 further specify the selection rules if it's a multiplexer. If you don't specify
-an selector, then by default it's replicating:
+a selector, then by default it's replicating:
 
 .. code-block:: properties
 
@@ -540,8 +590,7 @@ configured as default:
 
   <Agent>.sources.<Source1>.selector.default = <Channel2>
 
-The mapping allows overlapping the channels for each value. The default must be
-set for a multiplexing select which can also contain any number of channels.
+The mapping allows overlapping the channels for each value.
 
 The following example has a single flow that multiplexed to two paths. The
 agent named agent_foo has a single avro source and two channels linked to two sinks:
@@ -607,7 +656,9 @@ Note that if a header does not have any required channels, then the event will
 be written to the default channels and will be attempted to be written to the
 optional channels for that header. Specifying optional channels will still cause
 the event to be written to the default channels, if no required channels are
-specified.
+specified. If no channels are designated as default and there are no required,
+the selector will attempt to write the events to the optional channels. Any
+failures are simply ignored in that case.
 
 
 Flume Sources
@@ -621,19 +672,20 @@ When paired with the built-in AvroSink on another (previous hop) Flume agent,
 it can create tiered collection topologies.
 Required properties are in **bold**.
 
-==============  ===========  ===================================================
-Property Name   Default      Description
-==============  ===========  ===================================================
-**channels**    --
-**type**        --           The component type name, needs to be ``avro``
-**bind**        --           hostname or IP address to listen on
-**port**        --           Port # to bind to
-threads         --           Maximum number of worker threads to spawn
+==================   ===========  ===================================================
+Property Name        Default      Description
+==================   ===========  ===================================================
+**channels**         --
+**type**             --           The component type name, needs to be ``avro``
+**bind**             --           hostname or IP address to listen on
+**port**             --           Port # to bind to
+threads              --           Maximum number of worker threads to spawn
 selector.type
 selector.*
-interceptors    --           Space separated list of interceptors
+interceptors         --           Space-separated list of interceptors
 interceptors.*
-==============  ===========  ===================================================
+compression-type     none         This can be "none" or "deflate".  The compression-type must match the compression-type of matching AvroSource
+==================   ===========  ===================================================
 
 Example for agent named a1:
 
@@ -642,6 +694,39 @@ Example for agent named a1:
   a1.sources = r1
   a1.channels = c1
   a1.sources.r1.type = avro
+  a1.sources.r1.channels = c1
+  a1.sources.r1.bind = 0.0.0.0
+  a1.sources.r1.port = 4141
+
+Thrift Source
+~~~~~~~~~~~~~
+
+Listens on Thrift port and receives events from external Thrift client streams.
+When paired with the built-in ThriftSink on another (previous hop) Flume agent,
+it can create tiered collection topologies.
+Required properties are in **bold**.
+
+==================   ===========  ===================================================
+Property Name        Default      Description
+==================   ===========  ===================================================
+**channels**         --
+**type**             --           The component type name, needs to be ``thrift``
+**bind**             --           hostname or IP address to listen on
+**port**             --           Port # to bind to
+threads              --           Maximum number of worker threads to spawn
+selector.type
+selector.*
+interceptors         --           Space separated list of interceptors
+interceptors.*
+==================   ===========  ===================================================
+
+Example for agent named a1:
+
+.. code-block:: properties
+
+  a1.sources = r1
+  a1.channels = c1
+  a1.sources.r1.type = thrift
   a1.sources.r1.channels = c1
   a1.sources.r1.bind = 0.0.0.0
   a1.sources.r1.port = 4141
@@ -665,13 +750,14 @@ Property Name    Default      Description
 **channels**     --
 **type**         --           The component type name, needs to be ``exec``
 **command**      --           The command to execute
+shell            --           A shell invocation used to run the command.  e.g. /bin/sh -c. Required only for commands relying on shell features like wildcards, back ticks, pipes etc.
 restartThrottle  10000        Amount of time (in millis) to wait before attempting a restart
 restart          false        Whether the executed cmd should be restarted if it dies
 logStdErr        false        Whether the command's stderr should be logged
 batchSize        20           The max number of lines to read and send to the channel at a time
 selector.type    replicating  replicating or multiplexing
 selector.*                    Depends on the selector.type value
-interceptors     --           Space separated list of interceptors
+interceptors     --           Space-separated list of interceptors
 interceptors.*
 ===============  ===========  ==============================================================
 
@@ -708,45 +794,67 @@ Example for agent named a1:
   a1.sources.r1.command = tail -F /var/log/secure
   a1.sources.r1.channels = c1
 
-Spooling Directory Source
-~~~~~~~~~~~~~~~~~~~~~~~~~
-This source lets you ingest data by dropping files in a spooling directory on
-disk. **Unlike other asynchronous sources, this source
-avoids data loss even if Flume is restarted or fails.**
-Flume will watch the directory for new files and read then ingest them
-as they appear. After a given file has been fully read into the channel,
-it is renamed to indicate completion. This allows a cleaner process to remove
-completed files periodically. Note, however,
-that events may be duplicated if failures occur, consistent with the semantics
-offered by other Flume components. The channel optionally inserts the full path of
-the origin file into a header field of each event. This source buffers file data
-in memory during reads; be sure to set the `bufferMaxLineLength` option to a number
-greater than the longest line you expect to see in your input data.
+The 'shell' config is used to invoke the 'command' through a command shell (such as Bash
+or Powershell). The 'command' is passed as an argument to 'shell' for execution. This
+allows the 'command' to use features from the shell such as wildcards, back ticks, pipes,
+loops, conditionals etc. In the absence of the 'shell' config, the 'command' will be
+invoked directly.  Common values for 'shell' :  '/bin/sh -c', '/bin/ksh -c',
+'cmd /c',  'powershell -Command', etc.
 
-.. warning:: This channel expects that only immutable, uniquely named files
-             are dropped in the spooling directory. If duplicate names are
-             used, or files are modified while being read, the source will
-             fail with an error message. For some use cases this may require
-             adding unique identifiers (such as a timestamp) to log file names
-             when they are copied into the spooling directory.
+.. code-block:: properties
 
-====================  ==============  ==========================================================
-Property Name         Default         Description
-====================  ==============  ==========================================================
-**channels**          --
-**type**              --              The component type name, needs to be ``spooldir``
-**spoolDir**          --              The directory where log files will be spooled
-fileSuffix            .COMPLETED      Suffix to append to completely ingested files
-fileHeader            false           Whether to add a header storing the filename
-fileHeaderKey         file            Header key to use when appending filename to header
-batchSize             10              Granularity at which to batch transfer to the channel
-bufferMaxLines        100             Maximum number of lines the commit buffer can hold
-bufferMaxLineLength   5000            Maximum length of a line in the commit buffer
-selector.type         replicating     replicating or multiplexing
-selector.*                            Depends on the selector.type value
-interceptors          --              Space separated list of interceptors
-interceptors.*
-====================  ==============  ==========================================================
+  agent_foo.sources.tailsource-1.type = exec
+  agent_foo.sources.tailsource-1.shell = /bin/bash -c
+  agent_foo.sources.tailsource-1.command = for i in /path/*.txt; do cat $i; done
+
+JMS Source
+~~~~~~~~~~~
+
+JMS Source reads messages from a JMS destination such as a queue or topic. Being a JMS
+application it should work with any JMS provider but has only been tested with ActiveMQ.
+The JMS source provides configurable batch size, message selector, user/pass, and message
+to flume event converter.
+
+Required properties are in **bold**.
+
+=========================   ===========  ==============================================================
+Property Name               Default      Description
+=========================   ===========  ==============================================================
+**channels**                --
+**type**                    --           The component type name, needs to be ``jms``
+**initialContextFactory**   --           Inital Context Factory, e.g: org.apache.activemq.jndi.ActiveMQInitialContextFactory
+**providerURL**             --           The JMS provider URL
+**destinationName**         --           Destination name
+**destinationType**         --           Destination type (queue or topic)
+messageSelector             --           Message selector to use when creating the consumer
+userName                    --           Username for the destination/provider
+passwordFile                --           File containing the password for the destination/provider
+batchSize                   100          Number of messages to consume in one batch
+converter.type              DEFAULT      Class to use to convert messages to flume events. See below.
+converter.*                 --           Converter properties.
+converter.charset           UTF-8        Default converter only. Charset to use when converting JMS TextMessages to byte arrays.
+=========================   ===========  ==============================================================
+
+
+Converter
+'''''''''''
+The JMS source allows pluggable converters, though it's likely the default converter will work
+for most purposes. The default converter is able to convert Bytes, Text, and Object messages
+to FlumeEvents. In all cases, the properties in the message are added as headers to the
+FlumeEvent.
+
+BytesMessage:
+  Bytes of message are copied to body of the FlumeEvent. Cannot convert more than 2GB
+  of data per message.
+
+TextMessage:
+  Text of message is converted to a byte array and copied to the body of the
+  FlumeEvent. The default converter uses UTF-8 by default but this is configurable.
+
+ObjectMessage:
+  Object is written out to a ByteArrayOutputStream wrapped in an ObjectOutputStream and
+  the resulting array is copied to the body of the FlumeEvent.
+
 
 Example for agent named a1:
 
@@ -754,10 +862,99 @@ Example for agent named a1:
 
   a1.sources = r1
   a1.channels = c1
-  a1.sources.r1.type = spooldir
-  a1.sources.r1.spoolDir = /var/log/apache/flumeSpool
-  a1.sources.r1.fileHeader = true
+  a1.sources.r1.type = jms
   a1.sources.r1.channels = c1
+  a1.sources.r1.initialContextFactory = org.apache.activemq.jndi.ActiveMQInitialContextFactory
+  a1.sources.r1.providerURL = tcp://mqserver:61616
+  a1.sources.r1.destinationName = BUSINESS_DATA
+  a1.sources.r1.destinationType = QUEUE
+
+Spooling Directory Source
+~~~~~~~~~~~~~~~~~~~~~~~~~
+This source lets you ingest data by placing files to be ingested into a
+"spooling" directory on disk.
+This source will watch the specified directory for new files, and will parse
+events out of new files as they appear.
+The event parsing logic is pluggable.
+After a given file has been fully read
+into the channel, it is renamed to indicate completion (or optionally deleted).
+
+Unlike the Exec source, this source is reliable and will not miss data, even if
+Flume is restarted or killed. In exchange for this reliability, only immutable,
+uniquely-named files must be dropped into the spooling directory. Flume tries
+to detect these problem conditions and will fail loudly if they are violated:
+
+#. If a file is written to after being placed into the spooling directory,
+   Flume will print an error to its log file and stop processing.
+#. If a file name is reused at a later time, Flume will print an error to its
+   log file and stop processing.
+
+To avoid the above issues, it may be useful to add a unique identifier
+(such as a timestamp) to log file names when they are moved into the spooling
+directory.
+
+Despite the reliability guarantees of this source, there are still
+cases in which events may be duplicated if certain downstream failures occur.
+This is consistent with the guarantees offered by other Flume components.
+
+====================  ==============  ==========================================================
+Property Name         Default         Description
+====================  ==============  ==========================================================
+**channels**          --
+**type**              --              The component type name, needs to be ``spooldir``.
+**spoolDir**          --              The directory from which to read files from.
+fileSuffix            .COMPLETED      Suffix to append to completely ingested files
+deletePolicy          never           When to delete completed files: ``never`` or ``immediate``
+fileHeader            false           Whether to add a header storing the filename
+fileHeaderKey         file            Header key to use when appending filename to header
+ignorePattern         ^$              Regular expression specifying which files to ignore (skip)
+trackerDir            .flumespool     Directory to store metadata related to processing of files.
+                                      If this path is not an absolute path, then it is interpreted as relative to the spoolDir.
+batchSize             100             Granularity at which to batch transfer to the channel
+inputCharset          UTF-8           Character set used by deserializers that treat the input file as text.
+deserializer          ``LINE``        Specify the deserializer used to parse the file into events.
+                                      Defaults to parsing each line as an event. The class specified must implement
+                                      ``EventDeserializer.Builder``.
+deserializer.*                        Varies per event deserializer.
+bufferMaxLines        --              (Obselete) This option is now ignored.
+bufferMaxLineLength   5000            (Deprecated) Maximum length of a line in the commit buffer. Use deserializer.maxLineLength instead.
+selector.type         replicating     replicating or multiplexing
+selector.*                            Depends on the selector.type value
+interceptors          --              Space-separated list of interceptors
+interceptors.*
+====================  ==============  ==========================================================
+
+Example for an agent named agent-1:
+
+.. code-block:: properties
+
+  agent-1.channels = ch-1
+  agent-1.sources = src-1
+
+  agent-1.sources.src-1.type = spooldir
+  agent-1.sources.src-1.channels = ch-1
+  agent-1.sources.src-1.spoolDir = /var/log/apache/flumeSpool
+  agent-1.sources.src-1.fileHeader = true
+
+Event Deserializers
+'''''''''''''''''''
+
+The following event deserializers ship with Flume.
+
+LINE
+^^^^
+
+This deserializer generates one event per line of text input.
+
+==============================  ==============  ==========================================================
+Property Name                   Default         Description
+==============================  ==============  ==========================================================
+deserializer.maxLineLength      2048            Maximum number of characters to include in a single event.
+                                                If a line exceeds this length, it is truncated, and the
+                                                remaining characters on the line will appear in a
+                                                subsequent event.
+deserializer.outputCharset      UTF-8           Charset to use for encoding events put into the channel.
+==============================  ==============  ==========================================================
 
 NetCat Source
 ~~~~~~~~~~~~~
@@ -781,7 +978,7 @@ max-line-length  512          Max line length per event body (in bytes)
 ack-every-event  true         Respond with an "OK" for every event received
 selector.type    replicating  replicating or multiplexing
 selector.*                    Depends on the selector.type value
-interceptors     --           Space separated list of interceptors
+interceptors     --           Space-separated list of interceptors
 interceptors.*
 ===============  ===========  ===========================================
 
@@ -810,7 +1007,7 @@ Property Name   Default      Description
 **type**        --           The component type name, needs to be ``seq``
 selector.type                replicating or multiplexing
 selector.*      replicating  Depends on the selector.type value
-interceptors    --           Space separated list of interceptors
+interceptors    --           Space-separated list of interceptors
 interceptors.*
 batchSize       1
 ==============  ===========  ========================================
@@ -848,7 +1045,7 @@ Property Name    Default      Description
 eventSize        2500         Maximum size of a single event line, in bytes
 selector.type                 replicating or multiplexing
 selector.*       replicating  Depends on the selector.type value
-interceptors     --           Space separated list of interceptors
+interceptors     --           Space-separated list of interceptors
 interceptors.*
 ==============   ===========  ==============================================
 
@@ -890,7 +1087,7 @@ readBufferSize        1024              Size of the internal Mina read buffer. P
 numProcessors         (auto-detected)   Number of processors available on the system for use while processing messages. Default is to auto-detect # of CPUs using the Java Runtime API. Mina will spawn 2 request-processing threads per detected CPU, which is often reasonable.
 selector.type         replicating       replicating, multiplexing, or custom
 selector.*            --                Depends on the ``selector.type`` value
-interceptors          --                Space separated list of interceptors.
+interceptors          --                Space-separated list of interceptors.
 interceptors.*
 ====================  ================  ==============================================
 
@@ -918,7 +1115,7 @@ Property Name   Default      Description
 **port**        --           Port # to bind to
 selector.type                replicating or multiplexing
 selector.*      replicating  Depends on the selector.type value
-interceptors    --           Space separated list of interceptors
+interceptors    --           Space-separated list of interceptors
 interceptors.*
 ==============  ===========  ==============================================
 
@@ -940,9 +1137,9 @@ A source which accepts Flume Events by HTTP POST and GET. GET should be used
 for experimentation only. HTTP requests are converted into flume events by
 a pluggable "handler" which must implement the HTTPSourceHandler interface.
 This handler takes a HttpServletRequest and returns a list of
-flume events. All events handler from one Http request are committed to the channel
+flume events. All events handled from one Http request are committed to the channel
 in one transaction, thus allowing for increased efficiency on channels like
-the file channel. If the handler throws an exception this source will
+the file channel. If the handler throws an exception, this source will
 return a HTTP status of 400. If the channel is full, or the source is unable to
 append events to the channel, the source will return a HTTP 503 - Temporarily
 unavailable status.
@@ -950,18 +1147,18 @@ unavailable status.
 All events sent in one post request are considered to be one batch and
 inserted into the channel in one transaction.
 
-==============  ===========================================  ====================================================================
-Property Name   Default                                      Description
-==============  ===========================================  ====================================================================
-**type**                                                     The FQCN of this class:  ``org.apache.flume.source.http.HTTPSource``
-**port**        --                                           The port the source should bind to.
-handler         ``org.apache.flume.http.JSONHandler``        The FQCN of the handler class.
-handler.*       --                                           Config parameters for the handler
-selector.type   replicating                                  replicating or multiplexing
-selector.*                                                   Depends on the selector.type value
-interceptors    --                                           Space separated list of interceptors
+==============  ============================================  ====================================================================
+Property Name   Default                                       Description
+==============  ============================================  ====================================================================
+**type**                                                      The component type name, needs to be ``http``
+**port**        --                                            The port the source should bind to.
+handler         ``org.apache.flume.source.http.JSONHandler``  The FQCN of the handler class.
+handler.*       --                                            Config parameters for the handler
+selector.type   replicating                                   replicating or multiplexing
+selector.*                                                    Depends on the selector.type value
+interceptors    --                                            Space-separated list of interceptors
 interceptors.*
-=================================================================================================================================
+==================================================================================================================================
 
 For example, a http source for agent named a1:
 
@@ -1006,7 +1203,7 @@ To set the charset, the request must have content type specified as
 ``application/json; charset=UTF-8`` (replace UTF-8 with UTF-16 or UTF-32 as
 required).
 
-One way to create an event in the format expected by this handler, is to
+One way to create an event in the format expected by this handler is to
 use JSONEvent provided in the Flume SDK and use Google Gson to create the JSON
 string using the Gson#fromJson(Object, Type)
 method. The type token to pass as the 2nd argument of this method
@@ -1050,7 +1247,7 @@ Property Name   Default      Description
 **port**        --           The port # to listen on
 selector.type                replicating or multiplexing
 selector.*      replicating  Depends on the selector.type value
-interceptors    --           Space separated list of interceptors
+interceptors    --           Space-separated list of interceptors
 interceptors.*
 ==============  ===========  ========================================================================================
 
@@ -1077,7 +1274,7 @@ Property Name   Default      Description
 **port**        --           The port # to listen on
 selector.type                replicating or multiplexing
 selector.*      replicating  Depends on the selector.type value
-interceptors    --           Space separated list of interceptors
+interceptors    --           Space-separated list of interceptors
 interceptors.*
 ==============  ===========  ======================================================================================
 
@@ -1106,7 +1303,7 @@ Property Name   Default      Description
 **type**        --           The component type name, needs to be your FQCN
 selector.type                ``replicating`` or ``multiplexing``
 selector.*      replicating  Depends on the selector.type value
-interceptors    --           Space separated list of interceptors
+interceptors    --           Space-separated list of interceptors
 interceptors.*
 ==============  ===========  ==============================================
 
@@ -1201,7 +1398,7 @@ complete files in the directory.
 Required properties are in **bold**.
 
 .. note:: For all of the time related escape sequences, a header with the key
-          "timestamp" must exist among the headers of the event. One way to add
+          "timestamp" must exist among the headers of the event (unless ``hdfs.useLocalTimeStamp`` is set to ``true``). One way to add
           this automatically is to use the TimestampInterceptor.
 
 ======================  ============  ======================================================================
@@ -1212,6 +1409,8 @@ Name                    Default       Description
 **hdfs.path**           --            HDFS directory path (eg hdfs://namenode/flume/webdata/)
 hdfs.filePrefix         FlumeData     Name prefixed to files created by Flume in hdfs directory
 hdfs.fileSuffix         --            Suffix to append to file (eg ``.avro`` - *NOTE: period is not automatically added*)
+hdfs.inUsePrefix        --            Prefix that is used for temporal files that flume actively writes into
+hdfs.inUseSuffix        ``.tmp``      Suffix that is used for temporal files that flume actively writes into
 hdfs.rollInterval       30            Number of seconds to wait before rolling current file
                                       (0 = never roll based on time interval)
 hdfs.rollSize           1024          File size to trigger roll, in bytes (0: never roll based on file size)
@@ -1220,11 +1419,12 @@ hdfs.rollCount          10            Number of events written to file before it
 hdfs.idleTimeout        0             Timeout after which inactive files get closed
                                       (0 = disable automatic closing of idle files)
 hdfs.batchSize          100           number of events written to file before it is flushed to HDFS
-hdfs.codeC              --            Compression codec. one of following : gzip, bzip2, lzo, snappy
+hdfs.codeC              --            Compression codec. one of following : gzip, bzip2, lzo, lzop, snappy
 hdfs.fileType           SequenceFile  File format: currently ``SequenceFile``, ``DataStream`` or ``CompressedStream``
                                       (1)DataStream will not compress output file and please don't set codeC
                                       (2)CompressedStream requires set hdfs.codeC with an available codeC
 hdfs.maxOpenFiles       5000          Allow only this number of open files. If this number is exceeded, the oldest file is closed.
+hdfs.minBlockReplicas   --            Specify minimum number of replicas per HDFS block. If not specified, it comes from the default Hadoop config in the classpath.
 hdfs.writeFormat        --            "Text" or "Writable"
 hdfs.callTimeout        10000         Number of milliseconds allowed for HDFS operations, such as open, write, flush, close.
                                       This number should be increased if many HDFS timeout operations are occurring.
@@ -1237,6 +1437,7 @@ hdfs.round              false         Should the timestamp be rounded down (if t
 hdfs.roundValue         1             Rounded down to the highest multiple of this (in the unit configured using ``hdfs.roundUnit``), less than current time.
 hdfs.roundUnit          second        The unit of the round down value - ``second``, ``minute`` or ``hour``.
 hdfs.timeZone           Local Time    Name of the timezone that should be used for resolving the directory path, e.g. America/Los_Angeles.
+hdfs.useLocalTimeStamp  false         Use the local time (instead of the timestamp from the event header) while replacing the escape sequences.
 serializer              ``TEXT``      Other possible options include ``avro_event`` or the
                                       fully-qualified class name of an implementation of the
                                       ``EventSerializer.Builder`` interface.
@@ -1248,7 +1449,7 @@ Example for agent named a1:
 .. code-block:: properties
 
   a1.channels = c1
-  a1.sinks = k1 
+  a1.sinks = k1
   a1.sinks.k1.type = hdfs
   a1.sinks.k1.channel = c1
   a1.sinks.k1.hdfs.path = /flume/events/%y-%m-%d/%H%M/%S
@@ -1279,7 +1480,7 @@ Example for agent named a1:
 .. code-block:: properties
 
   a1.channels = c1
-  a1.sinks = k1 
+  a1.sinks = k1
   a1.sinks.k1.type = logger
   a1.sinks.k1.channel = c1
 
@@ -1292,26 +1493,61 @@ hostname / port pair. The events are taken from the configured Channel in
 batches of the configured batch size.
 Required properties are in **bold**.
 
-===============  =======  ==============================================
-Property Name    Default  Description
-===============  =======  ==============================================
-**channel**      --
-**type**         --       The component type name, needs to be ``avro``.
-**hostname**     --       The hostname or IP address to bind to.
-**port**         --       The port # to listen on.
-batch-size       100      number of event to batch together for send.
-connect-timeout  20000    Amount of time (ms) to allow for the first (handshake) request.
-request-timeout  20000    Amount of time (ms) to allow for requests after the first.
-
-===============  =======  ==============================================
+==========================   =======  ==============================================
+Property Name                Default  Description
+==========================   =======  ==============================================
+**channel**                  --
+**type**                     --       The component type name, needs to be ``avro``.
+**hostname**                 --       The hostname or IP address to bind to.
+**port**                     --       The port # to listen on.
+batch-size                   100      number of event to batch together for send.
+connect-timeout              20000    Amount of time (ms) to allow for the first (handshake) request.
+request-timeout              20000    Amount of time (ms) to allow for requests after the first.
+reset-connection-interval    none     Amount of time (s) before the connection to the next hop is reset. This will force the Avro Sink to reconnect to the next hop. This will allow the sink to connect to hosts behind a hardware load-balancer when news hosts are added without having to restart the agent.
+compression-type             none     This can be "none" or "deflate".  The compression-type must match the compression-type of matching AvroSource
+compression-level            6	      The level of compression to compress event. 0 = no compression and 1-9 is compression.  The higher the number the more compression
+==========================   =======  ==============================================
 
 Example for agent named a1:
 
 .. code-block:: properties
 
   a1.channels = c1
-  a1.sinks = k1 
+  a1.sinks = k1
   a1.sinks.k1.type = avro
+  a1.sinks.k1.channel = c1
+  a1.sinks.k1.hostname = 10.10.10.10
+  a1.sinks.k1.port = 4545
+
+Thrift Sink
+~~~~~~~~~~~
+
+This sink forms one half of Flume's tiered collection support. Flume events
+sent to this sink are turned into Thrift events and sent to the configured
+hostname / port pair. The events are taken from the configured Channel in
+batches of the configured batch size.
+Required properties are in **bold**.
+
+==========================   =======  ==============================================
+Property Name                Default  Description
+==========================   =======  ==============================================
+**channel**                  --
+**type**                     --       The component type name, needs to be ``thrift``.
+**hostname**                 --       The hostname or IP address to bind to.
+**port**                     --       The port # to listen on.
+batch-size                   100      number of event to batch together for send.
+connect-timeout              20000    Amount of time (ms) to allow for the first (handshake) request.
+request-timeout              20000    Amount of time (ms) to allow for requests after the first.
+connection-reset-interval    none     Amount of time (s) before the connection to the next hop is reset. This will force the Thrift Sink to reconnect to the next hop. This will allow the sink to connect to hosts behind a hardware load-balancer when news hosts are added without having to restart the agent.
+==========================   =======  ==============================================
+
+Example for agent named a1:
+
+.. code-block:: properties
+
+  a1.channels = c1
+  a1.sinks = k1
+  a1.sinks.k1.type = thrift
   a1.sinks.k1.channel = c1
   a1.sinks.k1.hostname = 10.10.10.10
   a1.sinks.k1.port = 4545
@@ -1346,7 +1582,7 @@ Example for agent named a1:
 .. code-block:: properties
 
   a1.channels = c1
-  a1.sinks = k1 
+  a1.sinks = k1
   a1.sinks.k1.type = irc
   a1.sinks.k1.channel = c1
   a1.sinks.k1.hostname = irc.yourdomain.com
@@ -1375,7 +1611,7 @@ Example for agent named a1:
 .. code-block:: properties
 
   a1.channels = c1
-  a1.sinks = k1 
+  a1.sinks = k1
   a1.sinks.k1.type = file_roll
   a1.sinks.k1.channel = c1
   a1.sinks.k1.sink.directory = /var/log/flume
@@ -1399,7 +1635,7 @@ Example for agent named a1:
 .. code-block:: properties
 
   a1.channels = c1
-  a1.sinks = k1 
+  a1.sinks = k1
   a1.sinks.k1.type = null
   a1.sinks.k1.channel = c1
 
@@ -1416,35 +1652,46 @@ HBase puts and/or increments. These puts and increments are then written
 to HBase. This sink provides the same consistency guarantees as HBase,
 which is currently row-wise atomicity. In the event of Hbase failing to
 write certain events, the sink will replay all events in that transaction.
-For convenience two serializers are provided with flume. The
+
+The HBaseSink supports writing data to secure HBase. To write to secure HBase, the user
+the agent is running as must have write permissions to the table the sink is configured
+to write to. The principal and keytab to use to authenticate against the KDC can be specified
+in the configuration. The hbase-site.xml in the Flume agent's classpath
+must have authentication set to ``kerberos`` (For details on how to do this, please refer to
+HBase documentation).
+
+For convenience, two serializers are provided with Flume. The
 SimpleHbaseEventSerializer (org.apache.flume.sink.hbase.SimpleHbaseEventSerializer)
 writes the event body
-as is to HBase, and optionally increments a column in Hbase. This is primarily
+as-is to HBase, and optionally increments a column in Hbase. This is primarily
 an example implementation. The RegexHbaseEventSerializer
 (org.apache.flume.sink.hbase.RegexHbaseEventSerializer) breaks the event body
 based on the given regex and writes each part into different columns.
 
 The type is the FQCN: org.apache.flume.sink.hbase.HBaseSink.
+
 Required properties are in **bold**.
 
-================  ======================================================  ========================================================================
-Property Name     Default                                                 Description
-================  ======================================================  ========================================================================
-**channel**       --
-**type**          --                                                      The component type name, needs to be ``org.apache.flume.sink.hbase.HBaseSink``
-**table**         --                                                      The name of the table in Hbase to write to.
-**columnFamily**  --                                                      The column family in Hbase to write to.
-batchSize         100                                                     Number of events to be written per txn.
-serializer        org.apache.flume.sink.hbase.SimpleHbaseEventSerializer
-serializer.*      --                                                      Properties to be passed to the serializer.
-================  ======================================================  ========================================================================
+==================  ======================================================  ==============================================================================
+Property Name       Default                                                 Description
+==================  ======================================================  ==============================================================================
+**channel**         --
+**type**            --                                                      The component type name, needs to be ``org.apache.flume.sink.hbase.HBaseSink``
+**table**           --                                                      The name of the table in Hbase to write to.
+**columnFamily**    --                                                      The column family in Hbase to write to.
+batchSize           100                                                     Number of events to be written per txn.
+serializer          org.apache.flume.sink.hbase.SimpleHbaseEventSerializer
+serializer.*        --                                                      Properties to be passed to the serializer.
+kerberosPrincipal   --                                                      Kerberos user principal for accessing secure HBase
+kerberosKeytab      --                                                      Kerberos keytab for accessing secure HBase
+==================  ======================================================  ==============================================================================
 
 Example for agent named a1:
 
 .. code-block:: properties
 
   a1.channels = c1
-  a1.sinks = k1 
+  a1.sinks = k1
   a1.sinks.k1.type = org.apache.flume.sink.hbase.HBaseSink
   a1.sinks.k1.table = foo_table
   a1.sinks.k1.columnFamily = bar_cf
@@ -1461,7 +1708,6 @@ HBase puts and/or increments. These puts and increments are then written
 to HBase. This sink provides the same consistency guarantees as HBase,
 which is currently row-wise atomicity. In the event of Hbase failing to
 write certain events, the sink will replay all events in that transaction.
-This sink is still experimental.
 The type is the FQCN: org.apache.flume.sink.hbase.AsyncHBaseSink.
 Required properties are in **bold**.
 
@@ -1471,20 +1717,30 @@ Property Name     Default                                                       
 **channel**       --
 **type**          --                                                            The component type name, needs to be ``org.apache.flume.sink.hbase.AsyncHBaseSink``
 **table**         --                                                            The name of the table in Hbase to write to.
+zookeeperQuorum   --                                                            The quorum spec. This is the value for the property ``hbase.zookeeper.quorum`` in hbase-site.xml
+znodeParent       /hbase                                                        The base path for the znode for the -ROOT- region. Value of ``zookeeper.znode.parent`` in hbase-site.xml
 **columnFamily**  --                                                            The column family in Hbase to write to.
 batchSize         100                                                           Number of events to be written per txn.
-timeout           --                                                            The length of time (in milliseconds) the sink waits for acks from hbase for
-                                                                                all events in a transaction. If no timeout is specified, the sink will wait forever.
+timeout           60000                                                         The length of time (in milliseconds) the sink waits for acks from hbase for
+                                                                                all events in a transaction.
 serializer        org.apache.flume.sink.hbase.SimpleAsyncHbaseEventSerializer
 serializer.*      --                                                            Properties to be passed to the serializer.
 ================  ============================================================  ====================================================================================
+
+Note that this sink takes the Zookeeper Quorum and parent znode information in
+the configuration. Zookeeper Quorum and parent node configuration may be
+specified in the flume configuration file. Alternatively, these configuration
+values are taken from the first hbase-site.xml file in the classpath.
+
+If these are not provided in the configuration, then the sink
+will read this information from the first hbase-site.xml file in the classpath.
 
 Example for agent named a1:
 
 .. code-block:: properties
 
   a1.channels = c1
-  a1.sinks = k1 
+  a1.sinks = k1
   a1.sinks.k1.type = org.apache.flume.sink.hbase.AsyncHBaseSink
   a1.sinks.k1.table = foo_table
   a1.sinks.k1.columnFamily = bar_cf
@@ -1523,7 +1779,7 @@ Example for agent named a1:
 .. code-block:: properties
 
   a1.channels = c1
-  a1.sinks = k1 
+  a1.sinks = k1
   a1.sinks.k1.type = org.apache.flume.sink.elasticsearch.ElasticSearchSink
   a1.sinks.k1.hostNames = 127.0.0.1:9200,127.0.0.2:9300
   a1.sinks.k1.indexName = foo_index
@@ -1554,7 +1810,7 @@ Example for agent named a1:
 .. code-block:: properties
 
   a1.channels = c1
-  a1.sinks = k1 
+  a1.sinks = k1
   a1.sinks.k1.type = org.example.MySink
   a1.sinks.k1.channel = c1
 
@@ -1567,19 +1823,32 @@ Source adds the events and Sink removes it.
 Memory Channel
 ~~~~~~~~~~~~~~
 
-The events are stored in a an in-memory queue with configurable max size. It's
-ideal for flow that needs higher throughput and prepared to lose the staged
+The events are stored in an in-memory queue with configurable max size. It's
+ideal for flows that need higher throughput and are prepared to lose the staged
 data in the event of a agent failures.
 Required properties are in **bold**.
 
-===================  =======  ==============================================================
-Property Name        Default  Description
-===================  =======  ==============================================================
-**type**             --       The component type name, needs to be ``memory``
-capacity             100      The max number of events stored in the channel
-transactionCapacity  100      The max number of events stored in the channel per transaction
-keep-alive           3        Timeout in seconds for adding or removing an event
-===================  =======  ==============================================================
+============================  ================  ===============================================================================
+Property Name                 Default           Description
+============================  ================  ===============================================================================
+**type**                      --                The component type name, needs to be ``memory``
+capacity                      100               The max number of events stored in the channel
+transactionCapacity           100               The max number of events stored in the channel per transaction
+keep-alive                    3                 Timeout in seconds for adding or removing an event
+byteCapacityBufferPercentage  20                Defines the percent of buffer between byteCapacity and the estimated total size
+                                                of all events in the channel, to account for data in headers. See below.
+byteCapacity                  see description   Maximum total **bytes** of memory allowed as a sum of all events in this channel.
+                                                The implementation only counts the Event ``body``, which is the reason for
+                                                providing the ``byteCapacityBufferPercentage`` configuration parameter as well.
+                                                Defaults to a computed value equal to 80% of the maximum memory available to
+                                                the JVM (i.e. 80% of the -Xmx value passed on the command line).
+                                                Note that if you have multiple memory channels on a single JVM, and they happen
+                                                to hold the same physical events (i.e. if you are using a replicating channel
+                                                selector from a single source) then those event sizes may be double-counted for
+                                                channel byteCapacity purposes.
+                                                Setting this value to ``0`` will cause this value to fall back to a hard
+                                                internal limit of about 200 GB.
+============================  ================  ===============================================================================
 
 Example for agent named a1:
 
@@ -1594,7 +1863,7 @@ JDBC Channel
 
 The events are stored in a persistent storage that's backed by a database.
 The JDBC channel currently supports embedded Derby. This is a durable channel
-that's ideal for the flows where recoverability is important.
+that's ideal for flows where recoverability is important.
 Required properties are in **bold**.
 
 ==========================  ====================================  =================================================
@@ -1661,11 +1930,13 @@ Property Name         Default                           Description
 ================================================  ================================  ========================================================
 **type**                                          --                                The component type name, needs to be ``file``.
 checkpointDir                                     ~/.flume/file-channel/checkpoint  The directory where checkpoint file will be stored
+useDualCheckpoints                                false                             Backup the checkpoint. If this is set to ``true``, ``backupCheckpointDir`` **must** be set
+backupCheckpointDir                               --                                The directory where the checkpoint is backed up to. This directory **must not** be the same as the data directories or the checkpoint directory
 dataDirs                                          ~/.flume/file-channel/data        The directory where log files will be stored
 transactionCapacity                               1000                              The maximum size of transaction supported by the channel
 checkpointInterval                                30000                             Amount of time (in millis) between checkpoints
 maxFileSize                                       2146435071                        Max size (in bytes) of a single log file
-minimumRequiredSpace                              524288000                         Minimum Required free space (in bytes)
+minimumRequiredSpace                              524288000                         Minimum Required free space (in bytes). To avoid data corruption, File Channel stops accepting take/put requests when free space drops below this value
 capacity                                          1000000                           Maximum capacity of the channel
 keep-alive                                        3                                 Amount of time (in sec) to wait for a put operation
 write-timeout                                     3                                 Amount of time (in sec) to wait for a write operation
@@ -1714,14 +1985,14 @@ Generating a key with a password seperate from the key store password:
    -keysize 128 -validity 9000 -keystore test.keystore \
    -storetype jceks -storepass keyStorePassword
 
-Generating a key with the password the same as the key store password:      
+Generating a key with the password the same as the key store password:
 
 .. code-block:: bash
 
   keytool -genseckey -alias key-1 -keyalg AES -keysize 128 -validity 9000 \
     -keystore src/test/resources/test.keystore -storetype jceks \
     -storepass keyStorePassword
-      
+
 
 .. code-block:: properties
 
@@ -1744,7 +2015,7 @@ Let's say you have aged key-0 out and new files should be encrypted with key-1:
   a1.channels.c1.encryption.keyProvider.keyStorePasswordFile = /path/to/my.keystore.password
   a1.channels.c1.encryption.keyProvider.keys = key-0 key-1
 
-The same scenerio as above, however key-0 has it's own password:
+The same scenerio as above, however key-0 has its own password:
 
 .. code-block:: properties
 
@@ -1806,11 +2077,12 @@ Replicating Channel Selector (default)
 
 Required properties are in **bold**.
 
-=============  ===========  ================================================
-Property Name  Default      Description
-=============  ===========  ================================================
-selector.type  replicating  The component type name, needs to be ``replicating``
-=============  ===========  ================================================
+==================  ===========  ====================================================
+Property Name       Default      Description
+==================  ===========  ====================================================
+selector.type       replicating  The component type name, needs to be ``replicating``
+selector.optional   --           Set of channels to be marked as ``optional``
+==================  ===========  ====================================================
 
 Example for agent named a1 and it's source called r1:
 
@@ -1820,6 +2092,12 @@ Example for agent named a1 and it's source called r1:
   a1.channels = c1 c2 c3
   a1.source.r1.selector.type = replicating
   a1.source.r1.channels = c1 c2 c3
+  a1.source.r1.selector.optional = c3
+
+In the above configuration, c3 is an optional channel. Failure to write to c3 is
+simply ignored. Since c1 and c2 are not marked optional, failure to write to
+those channels will cause the transaction to fail.
+
 
 Multiplexing Channel Selector
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1861,7 +2139,7 @@ Property Name  Default  Description
 selector.type  --       The component type name, needs to be your FQCN
 =============  =======  ==============================================
 
-Example for agent named a1 and it's source called r1:
+Example for agent named a1 and its source called r1:
 
 .. code-block:: properties
 
@@ -1882,7 +2160,7 @@ Required properties are in **bold**.
 ===================  ===========  =================================================================================
 Property Name        Default      Description
 ===================  ===========  =================================================================================
-**sinks**            --           Space separated list of sinks that are participating in the group
+**sinks**            --           Space-separated list of sinks that are participating in the group
 **processor.type**   ``default``  The component type name, needs to be ``default``, ``failover`` or ``load_balance``
 ===================  ===========  =================================================================================
 
@@ -1909,14 +2187,14 @@ Failover Sink Processor
 Failover Sink Processor maintains a prioritized list of sinks, guaranteeing
 that so long as one is available events will be processed (delivered).
 
-The fail over mechanism works by relegating failed sinks to a pool where
+The failover mechanism works by relegating failed sinks to a pool where
 they are assigned a cool down period, increasing with sequential failures
-before they are retried. Once a sink successfully sends an event it is
+before they are retried. Once a sink successfully sends an event, it is
 restored to the live pool.
 
 To configure, set a sink groups processor to ``failover`` and set
 priorities for all individual sinks. All specified priorities must
-be unique. Furthermore, upper limit to fail over time can be set
+be unique. Furthermore, upper limit to failover time can be set
 (in milliseconds) using ``maxpenalty`` property.
 
 Required properties are in **bold**.
@@ -1924,7 +2202,7 @@ Required properties are in **bold**.
 =================================  ===========  ===================================================================================
 Property Name                      Default      Description
 =================================  ===========  ===================================================================================
-**sinks**                          --           Space separated list of sinks that are participating in the group
+**sinks**                          --           Space-separated list of sinks that are participating in the group
 **processor.type**                 ``default``  The component type name, needs to be ``failover``
 **processor.priority.<sinkName>**  --             <sinkName> must be one of the sink instances associated with the current sink group
 processor.maxpenalty               30000        (in millis)
@@ -1965,22 +2243,23 @@ If ``backoff`` is enabled, the sink processor will blacklist
 sinks that fail, removing them for selection for a given timeout. When the
 timeout ends, if the sink is still unresponsive timeout is increased
 exponentially to avoid potentially getting stuck in long waits on unresponsive
-sinks.
+sinks. With this disabled, in round-robin all the failed sinks load will be
+passed to the next sink in line and thus not evenly balanced
 
 
 
 Required properties are in **bold**.
 
-====================================  ===============  ==========================================================================
-Property Name                         Default          Description
-====================================  ===============  ==========================================================================
-**processor.sinks**                   --               Space separated list of sinks that are participating in the group
-**processor.type**                    ``default``      The component type name, needs to be ``load_balance``
-processor.backoff                     true             Should failed sinks be backed off exponentially.
-processor.selector                    ``round_robin``  Selection mechanism. Must be either ``round_robin``, ``random``
-                                                       or FQCN of custom class that inherits from ``AbstractSinkSelector``
-processor.selector.maxBackoffMillis   30000            used by backoff selectors to limit exponential backoff in miliseconds
-====================================  ===============  ==========================================================================
+=============================  ===============  ==========================================================================
+Property Name                  Default          Description
+=============================  ===============  ==========================================================================
+**processor.sinks**            --               Space-separated list of sinks that are participating in the group
+**processor.type**             ``default``      The component type name, needs to be ``load_balance``
+processor.backoff              false            Should failed sinks be backed off exponentially.
+processor.selector             ``round_robin``  Selection mechanism. Must be either ``round_robin``, ``random``
+                                                or FQCN of custom class that inherits from ``AbstractSinkSelector``
+processor.selector.maxTimeOut  30000            Used by backoff selectors to limit exponential backoff (in milliseconds)
+=============================  ===============  ==========================================================================
 
 Example for agent named a1:
 
@@ -2023,7 +2302,7 @@ Example for agent named a1:
 
 .. code-block:: properties
 
-  a1.sinks = k1 
+  a1.sinks = k1
   a1.sinks.k1.type = file_roll
   a1.sinks.k1.channel = c1
   a1.sinks.k1.sink.directory = /var/log/flume
@@ -2073,7 +2352,7 @@ are named components, here is an example of how they are created through configu
 .. code-block:: properties
 
   a1.sources = r1
-  a1.sinks = k1 
+  a1.sinks = k1
   a1.channels = c1
   a1.sources.r1.interceptors = i1 i2
   a1.sources.r1.interceptors.i1.type = org.apache.flume.interceptor.HostInterceptor$Builder
@@ -2087,7 +2366,7 @@ Note that the interceptor builders are passed to the type config parameter. The 
 configurable and can be passed configuration values just like they are passed to any other configurable component.
 In the above example, events are passed to the HostInterceptor first and the events returned by the HostInterceptor
 are then passed along to the TimestampInterceptor. You can specify either the fully qualified class name (FQCN)
-or the alias ``timestamp``. If you have multiple collectors writing to the same HDFS path then you could also use
+or the alias ``timestamp``. If you have multiple collectors writing to the same HDFS path, then you could also use
 the HostInterceptor.
 
 Timestamp Interceptor
@@ -2208,9 +2487,9 @@ serializers.<s1>.\ **name**      --
 serializers.*                    --         Serializer-specific properties
 ================================ ========== =================================================================================================
 
-The serializers are used to map the matches to a header name and a formatted header value, by default you only need to specify
-the header name and the default ``org.apache.flume.interceptor.RegexExtractorInterceptorPassThroughSerializer`` will be used. 
-This serializer simply maps the matches to the specified header name and passes the value through as it was extracted by the regex. 
+The serializers are used to map the matches to a header name and a formatted header value; by default, you only need to specify
+the header name and the default ``org.apache.flume.interceptor.RegexExtractorInterceptorPassThroughSerializer`` will be used.
+This serializer simply maps the matches to the specified header name and passes the value through as it was extracted by the regex.
 You can plug custom serializer implementations into the extractor using the fully qualified class name (FQCN) to format the matches
 in anyway you like.
 
@@ -2281,7 +2560,7 @@ Log4J Appender
 
 Appends Log4j events to a flume agent's avro source. A client using this
 appender must have the flume-ng-sdk in the classpath (eg,
-flume-ng-sdk-1.3.0.jar).
+flume-ng-sdk-1.4.0-SNAPSHOT.jar).
 Required properties are in **bold**.
 
 =============  =======  ==========================================================================
@@ -2305,6 +2584,67 @@ Sample log4j.properties file:
   log4j.logger.org.example.MyClass = DEBUG,flume
   #...
 
+Load Balancing Log4J Appender
+=============================
+
+Appends Log4j events to a list of flume agent's avro source. A client using this
+appender must have the flume-ng-sdk in the classpath (eg,
+flume-ng-sdk-1.4.0-SNAPSHOT.jar). This appender supports a round-robin and random
+scheme for performing the load balancing. It also supports a configurable backoff
+timeout so that down agents are removed temporarily from the set of hosts
+Required properties are in **bold**.
+
+=============  ===========  ==========================================================================
+Property Name  Default      Description
+=============  ===========  ==========================================================================
+**Hosts**      --           A space-separated list of host:port
+                            at which Flume (through an AvroSource) is listening for events
+Selector       ROUND_ROBIN  Selection mechanism. Must be either ROUND_ROBIN,
+                            RANDOM or custom FQDN to class that inherits from LoadBalancingSelector.
+MaxBackoff     --           A long value representing the maximum amount of time in milliseconds
+                            the Load balancing client will backoff from a node that has failed to
+                            consume an event. Defaults to no backoff
+=============  ===========  ==========================================================================
+
+
+Sample log4j.properties file configured using defaults:
+
+.. code-block:: properties
+
+  #...
+  log4j.appender.out2 = org.apache.flume.clients.log4jappender.LoadBalancingLog4jAppender
+  log4j.appender.out2.Hosts = localhost:25430 localhost:25431
+
+  # configure a class's logger to output to the flume appender
+  log4j.logger.org.example.MyClass = DEBUG,flume
+  #...
+
+Sample log4j.properties file configured using RANDOM load balancing:
+
+.. code-block:: properties
+
+  #...
+  log4j.appender.out2 = org.apache.flume.clients.log4jappender.LoadBalancingLog4jAppender
+  log4j.appender.out2.Hosts = localhost:25430 localhost:25431
+  log4j.appender.out2.Selector = RANDOM
+
+  # configure a class's logger to output to the flume appender
+  log4j.logger.org.example.MyClass = DEBUG,flume
+  #...
+
+Sample log4j.properties file configured using backoff:
+
+.. code-block:: properties
+
+  #...
+  log4j.appender.out2 = org.apache.flume.clients.log4jappender.LoadBalancingLog4jAppender
+  log4j.appender.out2.Hosts = localhost:25430 localhost:25431 localhost:25432
+  log4j.appender.out2.Selector = ROUND_ROBIN
+  log4j.appender.out2.MaxBackoff = 30000
+
+  # configure a class's logger to output to the flume appender
+  log4j.logger.org.example.MyClass = DEBUG,flume
+  #...
 
 Security
 ========
@@ -2332,7 +2672,7 @@ and can be specified in the flume-env.sh:
 Property Name            Default  Description
 =======================  =======  =====================================================================================
 **type**                 --       The component type name, has to be ``ganglia``
-**hosts**                --       Comma separated list of ``hostname:port``
+**hosts**                --       Comma-separated list of ``hostname:port``
 pollInterval             60       Time, in seconds, between consecutive reporting to ganglia server
 isGanglia3               false    Ganglia server version is 3. By default, Flume sends in ganglia 3.1 format
 =======================  =======  =====================================================================================
@@ -2484,12 +2824,12 @@ If you need to ingest textual log data into Hadoop/HDFS then Flume is the
 right fit for your problem, full stop. For other use cases, here are some
 guidelines:
 
-Flume is designed to transport and ingest regularly generated event data over
+Flume is designed to transport and ingest regularly-generated event data over
 relatively stable, potentially complex topologies. The notion of "event data"
 is very broadly defined. To Flume, an event is just a generic blob of bytes.
 There are some limitations on how large an event can be - for instance, it
-cannot be larger than you can store in memory or on disk on a single machine -
-but in practice flume events can be everything from textual log entries to
+cannot be larger than what you can store in memory or on disk on a single machine -
+but in practice, flume events can be everything from textual log entries to
 image files. The key property of an event  is that they are generated in a
 continuous, streaming fashion. If your data is not regularly generated
 (i.e. you are trying to do a single bulk load of data into a Hadoop cluster)
@@ -2568,10 +2908,10 @@ Troubleshooting
 Handling agent failures
 -----------------------
 
-If the Flume agent goes down then the all the flows hosted on that agent are
+If the Flume agent goes down, then the all the flows hosted on that agent are
 aborted. Once the agent is restarted, then flow will resume. The flow using
 file channel or other stable channel will resume processing events where it left
-off. If the agent can't be restarted on the same, then there an option to
+off. If the agent can't be restarted on the same hardware, then there is an option to
 migrate the database to another hardware and setup a new Flume agent that
 can resume processing the events saved in the db. The database HA futures
 can be leveraged to move the Flume agent to another host.
@@ -2646,7 +2986,7 @@ org.apache.flume.ChannelSelector                              --                
 org.apache.flume.SinkProcessor                                default                 org.apache.flume.sink.DefaultSinkProcessor
 org.apache.flume.SinkProcessor                                failover                org.apache.flume.sink.FailoverSinkProcessor
 org.apache.flume.SinkProcessor                                load_balance            org.apache.flume.sink.LoadBalancingSinkProcessor
-org.apache.flume.SinkProcessor                                --                      
+org.apache.flume.SinkProcessor                                --
 
 org.apache.flume.interceptor.Interceptor                      timestamp               org.apache.flume.interceptor.TimestampInterceptor$Builder
 org.apache.flume.interceptor.Interceptor                      host                    org.apache.flume.interceptor.HostInterceptor$Builder

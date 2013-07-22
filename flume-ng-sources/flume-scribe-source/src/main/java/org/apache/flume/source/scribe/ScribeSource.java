@@ -141,7 +141,7 @@ public class ScribeSource extends AbstractSource implements
   class Receiver implements Iface {
 
     public ResultCode Log(List<LogEntry> list) throws TException {
-      if (list != null && list.size() > 0) {
+      if (list != null) {
         sourceCounter.addToEventReceivedCount(list.size());
 
         try {
@@ -151,19 +151,13 @@ public class ScribeSource extends AbstractSource implements
             Map<String, String> headers = new HashMap<String, String>(1, 1);
             headers.put(SCRIBE_CATEGORY, entry.getCategory());
 
-            ByteBuffer buffer = entry.getMessage();
-            int limit = buffer.limit();
-            int pos = buffer.position();
-
-            //Obtains actual data
-            byte[] buf = new byte[limit - pos];
-            System.arraycopy(buffer.array(), pos, buf, 0, buf.length);
-
-            Event event = EventBuilder.withBody(buf, headers);
+            Event event = EventBuilder.withBody(entry.getMessage().getBytes(), headers);
             events.add(event);
           }
 
-          getChannelProcessor().processEventBatch(events);
+          if (events.size() > 0) {
+            getChannelProcessor().processEventBatch(events);
+          }
 
           sourceCounter.addToEventAcceptedCount(list.size());
           return ResultCode.OK;

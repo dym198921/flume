@@ -24,12 +24,12 @@ import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
+import com.google.common.base.Preconditions;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.GnuParser;
@@ -39,15 +39,15 @@ import org.apache.commons.cli.ParseException;
 import org.apache.flume.Event;
 import org.apache.flume.EventDeliveryException;
 import org.apache.flume.FlumeException;
+import org.apache.flume.annotations.InterfaceAudience;
+import org.apache.flume.annotations.InterfaceStability;
 import org.apache.flume.api.RpcClient;
 import org.apache.flume.api.RpcClientFactory;
-import org.apache.flume.event.EventBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Charsets;
-import com.google.common.collect.Lists;
-
+@InterfaceAudience.Private
+@InterfaceStability.Evolving
 public class AvroCLIClient {
 
   private static final Logger logger = LoggerFactory
@@ -59,6 +59,7 @@ public class AvroCLIClient {
   private String hostname;
   private int port;
   private String fileName;
+  private String rpcClientPropsFile;
   private String dirName;
   private Map<String, String> headers = new HashMap<String, String>();
   private int sent;
@@ -73,8 +74,7 @@ public class AvroCLIClient {
     } catch (ParseException e) {
       logger.error("Unable to parse command line options - {}", e.getMessage());
     } catch (IOException e) {
-      logger.error("Unable to send data to Flume - {}", e.getMessage());
-      logger.debug("Exception follows.", e);
+      logger.error("Unable to send data to Flume. Exception follows.", e);
     } catch (FlumeException e) {
       logger.error("Unable to open connection to Flume. Exception follows.", e);
     } catch (EventDeliveryException e) {
@@ -121,7 +121,10 @@ public class AvroCLIClient {
   private boolean parseCommandLine(String[] args) throws ParseException {
     Options options = new Options();
 
-    options.addOption("p", "port", true, "port of the avro source")
+    options
+        .addOption("P", "rpcProps", true, "RPC client properties file with " +
+            "server connection params")
+        .addOption("p", "port", true, "port of the avro source")
         .addOption("H", "host", true, "hostname of the avro source")
         .addOption("F", "filename", true, "file to stream to avro source")
         .addOption(null, "dirname", true, "directory to stream to avro source")
@@ -145,19 +148,34 @@ public class AvroCLIClient {
           "--filename and --dirname options cannot be used simultaneously");
     }
 
-    if (!commandLine.hasOption("port")) {
-      throw new ParseException(
-          "You must specify a port to connect to with --port");
+    if (!commandLine.hasOption("port") && !commandLine.hasOption("host") &&
+        !commandLine.hasOption("rpcProps")) {
+      throw new ParseException("Either --rpcProps or both --host and --port " +
+          "must be specified.");
     }
 
-    port = Integer.parseInt(commandLine.getOptionValue("port"));
-
-    if (!commandLine.hasOption("host")) {
-      throw new ParseException(
-          "You must specify a hostname to connect to with --host");
+    if (commandLine.hasOption("rpcProps")) {
+      rpcClientPropsFile = commandLine.getOptionValue("rpcProps");
+      Preconditions.checkNotNull(rpcClientPropsFile, "RPC client properties " +
+          "file must be specified after --rpcProps argument.");
+      Preconditions.checkArgument(new File(rpcClientPropsFile).exists(),
+          "RPC client properties file %s does not exist!", rpcClientPropsFile);
     }
 
-    hostname = commandLine.getOptionValue("host");
+    if (rpcClientPropsFile == null) {
+      if (!commandLine.hasOption("port")) {
+        throw new ParseException(
+            "You must specify a port to connect to with --port");
+      }
+      port = Integer.parseInt(commandLine.getOptionValue("port"));
+
+      if (!commandLine.hasOption("host")) {
+        throw new ParseException(
+            "You must specify a hostname to connect to with --host");
+      }
+      hostname = commandLine.getOptionValue("host");
+    }
+
     fileName = commandLine.getOptionValue("filename");
     dirName = commandLine.getOptionValue("dirname");
 
@@ -168,40 +186,37 @@ public class AvroCLIClient {
     return true;
   }
 
-  private void setHeaders(Event event) {
-    event.setHeaders(headers);
-  }
-
   private void run() throws IOException, FlumeException,
       EventDeliveryException {
 
-    LineReader reader = null;
+    EventReader reader = null;
 
-    RpcClient rpcClient = RpcClientFactory.getDefaultInstance(hostname, port,
-        BATCH_SIZE);
+    RpcClient rpcClient;
+    if (rpcClientPropsFile != null) {
+      rpcClient = RpcClientFactory.getInstance(new File(rpcClientPropsFile));
+    } else {
+      rpcClient = RpcClientFactory.getDefaultInstance(hostname, port,
+          BATCH_SIZE);
+    }
+
     try {
       if (fileName != null) {
-        reader = new BufferedLineReader(new FileReader(new File(fileName)));
+        reader = new SimpleTextLineEventReader(new FileReader(new File(fileName)));
       } else if (dirName != null) {
-        reader = new SpoolingFileLineReader(new File(dirName), ".COMPLETED",
-            BATCH_SIZE, MAX_LINE_LENGTH);
+        reader = new ReliableSpoolingFileEventReader.Builder()
+            .spoolDirectory(new File(dirName)).build();
+      } else {
+        reader = new SimpleTextLineEventReader(new InputStreamReader(System.in));
       }
-      else {
-        reader = new BufferedLineReader(new InputStreamReader(System.in));
-      }
-
 
       long lastCheck = System.currentTimeMillis();
       long sentBytes = 0;
 
       int batchSize = rpcClient.getBatchSize();
-      List<String> lines = Lists.newLinkedList();
-      while (!(lines = reader.readLines(batchSize)).isEmpty()) {
-        List<Event> eventBuffer = Lists.newArrayList();
-        for (String line : lines) {
-          Event event = EventBuilder.withBody(line, Charsets.UTF_8);
-          setHeaders(event);
-          eventBuffer.add(event);
+      List<Event> events;
+      while (!(events = reader.readEvents(batchSize)).isEmpty()) {
+        for (Event event : events) {
+          event.setHeaders(headers);
           sentBytes += event.getBody().length;
           sent++;
 
@@ -211,7 +226,10 @@ public class AvroCLIClient {
             lastCheck = now;
           }
         }
-        rpcClient.appendBatch(eventBuffer);
+        rpcClient.appendBatch(events);
+        if (reader instanceof ReliableEventReader) {
+          ((ReliableEventReader) reader).commit();
+        }
       }
       logger.debug("Finished");
     } finally {

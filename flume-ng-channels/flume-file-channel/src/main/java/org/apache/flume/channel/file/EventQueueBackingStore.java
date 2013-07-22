@@ -29,6 +29,8 @@ abstract class EventQueueBackingStore {
   private long logWriteOrderID;
   private final int capacity;
   private final String name;
+  public static final String BACKUP_COMPLETE_FILENAME = "backupComplete";
+  protected Boolean slowdownBackup = false;
 
   protected EventQueueBackingStore(int capacity, String name) {
     this.capacity = capacity;
@@ -36,6 +38,7 @@ abstract class EventQueueBackingStore {
   }
 
 
+  abstract void beginCheckpoint() throws IOException;
   abstract void checkpoint() throws IOException;
   abstract void incrementFileID(int fileID);
   abstract void decrementFileID(int fileID);

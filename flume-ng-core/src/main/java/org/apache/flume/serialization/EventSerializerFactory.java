@@ -22,9 +22,13 @@ import com.google.common.base.Preconditions;
 import java.io.OutputStream;
 import org.apache.flume.Context;
 import org.apache.flume.FlumeException;
+import org.apache.flume.annotations.InterfaceAudience;
+import org.apache.flume.annotations.InterfaceStability;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@InterfaceAudience.Private
+@InterfaceStability.Stable
 public class EventSerializerFactory {
 
   private static final Logger logger =
@@ -55,8 +59,8 @@ public class EventSerializerFactory {
           builderClass = (Class<? extends EventSerializer.Builder>) c;
         } else {
           String errMessage = "Unable to instantiate Builder from " +
-              serializerType;
-          logger.error(errMessage);
+              serializerType + ": does not appear to implement " +
+              EventSerializer.Builder.class.getName();
           throw new FlumeException(errMessage);
         }
       } catch (ClassNotFoundException ex) {

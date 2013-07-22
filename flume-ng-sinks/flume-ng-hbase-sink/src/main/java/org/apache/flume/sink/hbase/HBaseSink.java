@@ -35,6 +35,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Increment;
+import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Row;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.slf4j.Logger;
@@ -43,6 +44,8 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Charsets;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
+import java.security.PrivilegedExceptionAction;
+import org.apache.hadoop.hbase.security.User;
 
 
 /**
@@ -90,6 +93,10 @@ public class HBaseSink extends AbstractSink implements Configurable {
   private HbaseEventSerializer serializer;
   private String eventSerializerType;
   private Context serializerContext;
+  private String kerberosPrincipal;
+  private String kerberosKeytab;
+  private User hbaseUser;
+  private boolean enableWal = true;
 
   public HBaseSink(){
     this(HBaseConfiguration.create());
@@ -114,18 +121,32 @@ public class HBaseSink extends AbstractSink implements Configurable {
       throw new FlumeException("Could not load table, " + tableName +
           " from HBase", e);
     }
-
     try {
-      if(!table.getTableDescriptor().hasFamily(columnFamily)) {
-        throw new IOException("Table " + tableName +
-            " has no such column family " + Bytes.toString(columnFamily));
+      if (HBaseSinkSecurityManager.isSecurityEnabled(config)) {
+        hbaseUser = HBaseSinkSecurityManager.login(config, null,
+                kerberosPrincipal, kerberosKeytab);
       }
-    } catch (IOException e) {
+    } catch (Exception ex) {
+      throw new FlumeException("Failed to login to HBase using "
+              + "provided credentials.", ex);
+    }
+    try {
+      if (!runPrivileged(new PrivilegedExceptionAction<Boolean>() {
+        @Override
+        public Boolean run() throws IOException {
+          return table.getTableDescriptor().hasFamily(columnFamily);
+        }
+      })) {
+        throw new IOException("Table " + tableName
+                + " has no such column family " + Bytes.toString(columnFamily));
+      }
+    } catch (Exception e) {
       //Get getTableDescriptor also throws IOException, so catch the IOException
       //thrown above or by the getTableDescriptor() call.
-      throw new FlumeException("Error getting column family from HBase." +
-          "Please verify that the table "+ tableName +" and Column Family, "
-          + Bytes.toString(columnFamily) + " exists in HBase.", e);
+      throw new FlumeException("Error getting column family from HBase."
+              + "Please verify that the table " + tableName + " and Column Family, "
+              + Bytes.toString(columnFamily) + " exists in HBase, and the"
+              + " current user has permissions to access that table.", e);
     }
 
     super.start();
@@ -176,6 +197,17 @@ public class HBaseSink extends AbstractSink implements Configurable {
       logger.error("Could not instantiate event serializer." , e);
       Throwables.propagate(e);
     }
+    kerberosKeytab = context.getString(HBaseSinkConfigurationConstants.CONFIG_KEYTAB, "");
+    kerberosPrincipal = context.getString(HBaseSinkConfigurationConstants.CONFIG_PRINCIPAL, "");
+
+    enableWal = context.getBoolean(HBaseSinkConfigurationConstants
+      .CONFIG_ENABLE_WAL, HBaseSinkConfigurationConstants.DEFAULT_ENABLE_WAL);
+    logger.info("The write to WAL option is set to: " + String.valueOf(enableWal));
+    if(!enableWal) {
+      logger.warn("HBase Sink's enableWal configuration is set to false. All " +
+        "writes to HBase will have WAL disabled, and any data in the " +
+        "memstore of this region in the Region Server could be lost!");
+    }
   }
 
   @Override
@@ -202,13 +234,37 @@ public class HBaseSink extends AbstractSink implements Configurable {
     return status;
   }
 
-  private void putEventsAndCommit(List<Row> actions, List<Increment> incs,
+  private void putEventsAndCommit(final List<Row> actions, final List<Increment> incs,
       Transaction txn) throws EventDeliveryException {
     try {
-      table.batch(actions);
-      for(Increment i: incs){
-        table.increment(i);
-      }
+      runPrivileged(new PrivilegedExceptionAction<Void>() {
+        @Override
+        public Void run() throws Exception {
+          for(Row r : actions) {
+            if(r instanceof Put) {
+              ((Put)r).setWriteToWAL(enableWal);
+            }
+            // Newer versions of HBase - Increment implements Row.
+            if(r instanceof Increment) {
+              ((Increment)r).setWriteToWAL(enableWal);
+            }
+          }
+          table.batch(actions);
+          return null;
+        }
+      });
+
+      runPrivileged(new PrivilegedExceptionAction<Void>() {
+        @Override
+        public Void run() throws Exception {
+          for (final Increment i : incs) {
+            i.setWriteToWAL(enableWal);
+            table.increment(i);
+          }
+          return null;
+        }
+      });
+
       txn.commit();
       counterGroup.incrementAndGet("transaction.success");
     } catch (Throwable e) {
@@ -233,6 +289,17 @@ public class HBaseSink extends AbstractSink implements Configurable {
       }
     } finally {
       txn.close();
+    }
+  }
+  private <T> T runPrivileged(final PrivilegedExceptionAction<T> action)
+          throws Exception {
+    if(hbaseUser != null) {
+      if (logger.isDebugEnabled()) {
+        logger.debug("Calling runAs as hbase user: " + hbaseUser.getName());
+      }
+      return hbaseUser.runAs(action);
+    } else {
+      return action.run();
     }
   }
 }

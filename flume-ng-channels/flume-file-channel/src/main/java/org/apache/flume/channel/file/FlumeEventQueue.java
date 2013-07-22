@@ -30,10 +30,7 @@ import java.util.Collection;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-
 import org.apache.commons.lang.ArrayUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -101,6 +98,7 @@ final class FlumeEventQueue {
       LOG.debug("Checkpoint not required");
       return false;
     }
+    backingStore.beginCheckpoint();
     inflightPuts.serializeAndWrite();
     inflightTakes.serializeAndWrite();
     backingStore.checkpoint();
@@ -321,9 +319,11 @@ final class FlumeEventQueue {
     return backingStore.getCapacity();
   }
 
-  synchronized void close() {
+  synchronized void close() throws IOException {
     try {
       backingStore.close();
+      inflightPuts.close();
+      inflightTakes.close();
     } catch (IOException e) {
       LOG.warn("Error closing backing store", e);
     }
@@ -335,7 +335,9 @@ final class FlumeEventQueue {
    */
   class InflightEventWrapper {
     private SetMultimap<Long, Long> inflightEvents = HashMultimap.create();
-    private RandomAccessFile file;
+    // Both these are volatile for safe publication, they are never accessed by
+    // more than 1 thread at a time.
+    private volatile RandomAccessFile file;
     private volatile java.nio.channels.FileChannel fileChannel;
     private final MessageDigest digest;
     private volatile Future<?> future;
@@ -387,26 +389,13 @@ final class FlumeEventQueue {
      * asynchronously written to disk.
      */
     public void serializeAndWrite() throws Exception {
-      //Check if there is a current write happening, if there is abort it.
-      if (future != null) {
-        try {
-          future.cancel(true);
-        } catch (Exception e) {
-          LOG.warn("Interrupted a write to inflights "
-                  + "file: " + inflightEventsFile.getName()
-                  + " to start a new write.");
-        }
-        while (!future.isDone()) {
-          TimeUnit.MILLISECONDS.sleep(100);
-        }
-      }
       Collection<Long> values = inflightEvents.values();
-      if(values.isEmpty()){
-        file.setLength(0L);
-      }
       if(!fileChannel.isOpen()){
         file = new RandomAccessFile(inflightEventsFile, "rw");
         fileChannel = file.getChannel();
+      }
+      if(values.isEmpty()){
+        file.setLength(0L);
       }
       //What is written out?
       //Checksum - 16 bytes
@@ -439,21 +428,9 @@ final class FlumeEventQueue {
         }
         byte[] checksum = digest.digest(buffer.array());
         file.write(checksum);
-        future = Executors.newSingleThreadExecutor().submit(
-                new Runnable() {
-                  @Override
-                  public void run() {
-                    try {
-                      buffer.position(0);
-                      fileChannel.write(buffer);
-                      fileChannel.force(true);
-                    } catch (IOException ex) {
-                      LOG.error("Error while writing inflight events to "
-                              + "inflights file: "
-                              + inflightEventsFile.getName());
-                    }
-                  }
-                });
+        buffer.position(0);
+        fileChannel.write(buffer);
+        fileChannel.force(true);
         syncRequired = false;
       } catch (IOException ex) {
         LOG.error("Error while writing checkpoint to disk.", ex);
@@ -523,6 +500,10 @@ final class FlumeEventQueue {
     //Needed for testing.
     public Collection<Long> getInFlightPointers() {
       return inflightEvents.values();
+    }
+
+    public void close() throws IOException {
+      file.close();
     }
   }
 }

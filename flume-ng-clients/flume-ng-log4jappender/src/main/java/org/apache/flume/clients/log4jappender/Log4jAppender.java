@@ -30,6 +30,7 @@ import org.apache.flume.api.RpcClientFactory;
 import org.apache.flume.event.EventBuilder;
 
 import org.apache.log4j.AppenderSkeleton;
+import org.apache.log4j.Layout;
 import org.apache.log4j.helpers.LogLog;
 import org.apache.log4j.spi.LoggingEvent;
 
@@ -62,7 +63,8 @@ public class Log4jAppender extends AppenderSkeleton {
 
   private String hostname;
   private int port;
-  private RpcClient rpcClient = null;
+
+  RpcClient rpcClient = null;
 
 
   /**
@@ -121,8 +123,15 @@ public class Log4jAppender extends AppenderSkeleton {
         String.valueOf(event.getLevel().toInt()));
     hdrs.put(Log4jAvroHeaders.MESSAGE_ENCODING.toString(), "UTF8");
 
-    Event flumeEvent = EventBuilder.withBody(event.getMessage().toString(),
-        Charset.forName("UTF8"), hdrs);
+    String message = null;
+    if(this.layout != null) {
+      message = this.layout.format(event);
+    } else {
+      message = event.getMessage().toString();
+    }
+
+    Event flumeEvent = EventBuilder.withBody(
+        message, Charset.forName("UTF8"), hdrs);
 
     try {
       rpcClient.append(flumeEvent);
@@ -153,7 +162,11 @@ public class Log4jAppender extends AppenderSkeleton {
 
   @Override
   public boolean requiresLayout() {
-    return false;
+    // This method is named quite incorrectly in the interface. It should
+    // probably be called canUseLayout or something. According to the docs,
+    // even if the appender can work without a layout, if it can work with one,
+    // this method must return true.
+    return true;
   }
 
   /**
@@ -171,7 +184,6 @@ public class Log4jAppender extends AppenderSkeleton {
   public void setPort(int port){
     this.port = port;
   }
-
   /**
    * Activate the options set using <tt>setPort()</tt>
    * and <tt>setHostname()</tt>
@@ -187,6 +199,9 @@ public class Log4jAppender extends AppenderSkeleton {
           e.getMessage();
       LogLog.error(errormsg);
       throw e;
+    }
+    if(layout != null) {
+      layout.activateOptions();
     }
   }
 
