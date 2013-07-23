@@ -205,7 +205,14 @@ public class SourceConfiguration extends ComponentConfiguration {
      *
      * @see org.apache.flume.source.ThriftSource
      */
-    THRIFT("org.apache.flume.source.http.ThriftSourceConfiguration");
+    THRIFT("org.apache.flume.source.http.ThriftSourceConfiguration"),
+
+    /**
+     * JMS Source
+     *
+     * @see org.apache.flume.source.jms.JMSSource
+     */
+    JMS("org.apache.flume.conf.source.jms.JMSSourceConfiguration");
 
     private String srcConfigurationName;
 

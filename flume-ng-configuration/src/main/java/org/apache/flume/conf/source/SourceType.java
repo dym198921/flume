@@ -83,7 +83,7 @@ public enum SourceType {
    * @see org.apache.flume.source.SpoolDirectorySource
    */
   SPOOLDIR("org.apache.flume.source.SpoolDirectorySource"),
-  
+
   /**
    * Sync directory source
    *
@@ -103,7 +103,14 @@ public enum SourceType {
    *
    * @see org.apache.flume.source.ThriftSource
    */
-  THRIFT("org.apache.flume.source.ThriftSource");
+  THRIFT("org.apache.flume.source.ThriftSource"),
+
+  /**
+   * JMS Source
+   *
+   * @see org.apache.flume.source.jms.JMSSource
+   */
+  JMS("org.apache.flume.source.jms.JMSSource");
 
   private final String sourceClassName;
 
