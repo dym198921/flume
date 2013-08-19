@@ -132,7 +132,7 @@ public class DirectorySyncFileLineReader {
     //  throw new IllegalStateException("Reader has been disabled.");
     //}
     boolean prevDisabled = disabled;
-    disabled = directory.exists();
+    disabled = ! directory.exists();
     if (prevDisabled && !disabled) {
       logger.info("directory {} found, resuming..", directory);
     } else if (!prevDisabled && disabled) {
