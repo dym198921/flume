@@ -110,15 +110,15 @@ public class DirectorySyncFileLineReader {
   /** Commit the last lines which were read. */
   public void commit() throws IOException {
     if (disabled) {
-      throw new IllegalStateException("Reader has been disabled.");
+      throw new IllegalStateException("Reader is disabled.");
     }
     currentFile.get().commit();
     committed = true;
   }
 
-  public byte[] readLine() throws IOException {
+  public byte[] readLine() {
     if (disabled) {
-      throw new IllegalStateException("Reader has been disabled.");
+      throw new IllegalStateException("Reader is disabled.");
     }
     List<byte[]> lines = readLines(1);
     if (lines.size() == 0) {
@@ -127,51 +127,67 @@ public class DirectorySyncFileLineReader {
     return lines.get(0);
   }
 
-  public List<byte[]> readLines(int n) throws IOException {
-    if (disabled) {
-      throw new IllegalStateException("Reader has been disabled.");
+  public List<byte[]> readLines(int n) {
+    //if (disabled) {
+    //  throw new IllegalStateException("Reader has been disabled.");
+    //}
+    boolean prevDisabled = disabled;
+    disabled = directory.exists();
+    if (prevDisabled && !disabled) {
+      logger.info("directory {} found, resuming..", directory);
+    } else if (!prevDisabled && disabled) {
+      throw new IllegalStateException("missing directory " + directory + ", reader disabled.");
+    } else if (disabled) {
+      throw new IllegalStateException("Reader is disabled.");
     }
-    if (!committed) {
-      if (!currentFile.isPresent()) {
-        throw new IllegalStateException("File should not roll when " +
-            "commit is outstanding.");
+
+    try {
+      if (!committed) {
+        if (!currentFile.isPresent()) {
+          throw new IllegalStateException("File should not roll when " +
+              "commit is outstanding.");
+        }
+        logger.info("Last read was never committed - resetting mark position.");
+        currentFile.get().reset();
+        committed = true;
       }
-      logger.info("Last read was never committed - resetting mark position.");
-      currentFile.get().reset();
-      committed = true;
-    }
 
-    // Check if new files have arrived since last call
-    if (!currentFile.isPresent()) {
-      currentFile = getNextFile();
-    }
-    // Return empty list if no new files
-    if (!currentFile.isPresent()) {
-      return Collections.emptyList();
-    }
-
-    /* It's possible that the last read took us just up to a file boundary.
-     * If so, try to roll to the next file, if there is one. */
-    byte[] outLine;
-    while ((outLine = currentFile.get().readLine()) == null) {
-      retireCurrentFile();
-      currentFile = getNextFile();
+      // Check if new files have arrived since last call
+      if (!currentFile.isPresent()) {
+        currentFile = getNextFile();
+      }
+      // Return empty list if no new files
       if (!currentFile.isPresent()) {
         return Collections.emptyList();
       }
-    }
-    List<byte[]> out = Lists.newArrayList();
-    while (outLine != null) {
-      out.add(outLine);
-      if (out.size() == n) {
-        break;
-      }
-      outLine = currentFile.get().readLine();
-    }
 
-    committed = false;
-    lastFileRead = currentFile;
-    return out;
+    /* It's possible that the last read took us just up to a file boundary.
+     * If so, try to roll to the next file, if there is one. */
+      byte[] outLine;
+      while ((outLine = currentFile.get().readLine()) == null) {
+        retireCurrentFile();
+        currentFile = getNextFile();
+        if (!currentFile.isPresent()) {
+          return Collections.emptyList();
+        }
+      }
+      List<byte[]> out = Lists.newArrayList();
+      while (outLine != null) {
+        out.add(outLine);
+        if (out.size() == n) {
+          break;
+        }
+        outLine = currentFile.get().readLine();
+      }
+
+      committed = false;
+      lastFileRead = currentFile;
+      return out;
+    } catch (IOException ioe) {
+      // something wrong with the file(s), skip over to next
+      currentFile = Optional.absent();
+      return Collections.emptyList();
+    }
   }
 
   /**
@@ -191,9 +207,13 @@ public class DirectorySyncFileLineReader {
     currentFile.get().close();
   }
 
-  public void close() throws IOException {
+  public void close() {
+    try {
     if (currentFile.isPresent())
       currentFile.get().close();
+    } catch (IOException ioe) {
+      currentFile = Optional.absent();
+    }
   }
 
   /**
@@ -201,7 +221,7 @@ public class DirectorySyncFileLineReader {
    *
    * @return the next file
    */
-  private Optional<ResumableFileLineReader> getNextFile() throws IOException {
+  private Optional<ResumableFileLineReader> getNextFile() {
     if (null != filesIterator && !filesIterator.hasNext()) {
       filesIterator = null;
       return Optional.absent();
@@ -210,6 +230,7 @@ public class DirectorySyncFileLineReader {
       filesIterator = FileUtils.iterateFiles(directory, new IOFileFilter() {
         @Override
         public boolean accept(File file) {
+          if (!file.exists()) return false; // skip non-exist files in iterator
           if (file.isFile()) {
             String fileStr = file.getName();
             if (!(fileStr.endsWith(endFileSuffix) ||
@@ -244,7 +265,6 @@ public class DirectorySyncFileLineReader {
           statsFilePrefix, statsFileSuffix, finishedStatsFileSuffix);
       return Optional.of(file);
     } catch (IOException e) {
-      disabled = true;
       logger.error("Exception opening file: " + nextFile, e);
       return Optional.absent();
     }
