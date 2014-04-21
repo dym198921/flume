@@ -5,74 +5,160 @@ import org.apache.flume.Channel;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.EventDeliveryException;
+import org.apache.flume.FlumeException;
 import org.apache.flume.Transaction;
 import org.apache.flume.conf.Configurable;
 import org.apache.flume.instrumentation.SinkCounter;
 import org.apache.flume.sink.AbstractSink;
-import org.apache.log4j.net.SyslogAppender;
-import org.apache.log4j.spi.LoggingEvent;
+import org.apache.log4j.Priority;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.util.Calendar;
+
 /**
- * Configurable items:
- * - host: syslog host string, not optional
- * - sink.batchSize: event processing batch size, optional, defaults to 100
+ * Configurable items: - host: syslog host string, not optional -
+ * sink.batchSize: event processing batch size, optional, defaults to 100
  */
 public class SyslogSink extends AbstractSink implements Configurable {
-  private static final Logger logger = LoggerFactory
-      .getLogger(SyslogSink.class);
+  private static Logger logger;
 
-  private SinkCounter counter = new SinkCounter(getName());
-  private static final int DEFAULT_BATCH_SIZE = 100;
+  private SinkCounter sinkCounter = new SinkCounter(getName());
   private int batchSize;
-  private SyslogAppender syslog;
+  private int retryInterval;
+
+  private int facility; // range: 0-23
+  private int severity; // range: 0-7
+  private Priority priority;
   private String host;
+  private boolean split;
+  private Mode mode;
+
+  private SyslogWriter syslogWriter;
 
   @Override
   public void configure(Context context) {
-    host = context.getString("host");
-    Preconditions.checkArgument(host != null, "syslog host must not be null");
+    /* init logger */
+    logger = LoggerFactory.getLogger(SyslogSink.class.getName() + "-" +
+        getName());
 
-    batchSize = context.getInteger("sink.batchSize", DEFAULT_BATCH_SIZE);
+    facility = context.getInteger(SyslogSinkConfigurationConstants.FACILITY,
+        SyslogSinkConfigurationConstants.DEFAULT_FACILITY);
+    severity = context.getInteger(SyslogSinkConfigurationConstants.SEVERITY,
+        SyslogSinkConfigurationConstants.DEFAULT_SEVERITY);
+    host = context.getString(SyslogSinkConfigurationConstants.HOST);
+    split = context.getBoolean(SyslogSinkConfigurationConstants.SPLIT,
+        SyslogSinkConfigurationConstants.DEFAULT_SPLIT);
+    String mode = context.getString(SyslogSinkConfigurationConstants.MODE,
+        SyslogSinkConfigurationConstants.DEFAULT_MODE);
+    retryInterval = context.getInteger(SyslogSinkConfigurationConstants
+            .RETRY_INTERVAL,
+        SyslogSinkConfigurationConstants.DEFAULT_RETRY_INTERVAL
+    );
+    batchSize = context.getInteger(SyslogSinkConfigurationConstants.BATCH_SIZE,
+        SyslogSinkConfigurationConstants.DEFAULT_BATCH_SIZE);
+
+    Preconditions.checkArgument(facility >= 0 && facility <= 23,
+        "facility out of range");
+    Preconditions.checkArgument(severity >= 0 && severity <= 7,
+        "severity out of range");
+    Preconditions.checkNotNull(host, "syslog host must not be null");
+    for (Mode m : Mode.values()) {
+      this.mode = m.name().equals(mode.toUpperCase()) ? m : this.mode;
+    }
+    Preconditions.checkArgument(this.mode != null, "unsupported mode: " + mode);
+    sinkCounter = new SinkCounter(this.getName());
   }
 
   @Override
   public synchronized void start() {
     logger.info("syslog sink {} starting...", getName());
-    syslog = new SyslogAppender();
-    syslog.setSyslogHost(host);
-    counter.start();
+
+    // network transport start
+    try {
+      syslogWriter = SyslogWriterFactory.getInstance(host);
+    } catch (SyslogException e) {
+      sinkCounter.incrementConnectionFailedCount();
+      throw new FlumeException("error while retrieving Syslog writer with " +
+          "host string: " + host, e);
+    }
+
+    // flume sink start
     super.start();
+    sinkCounter.incrementConnectionCreatedCount();
+    sinkCounter.start();
+
     logger.info("syslog sink {} started", getName());
   }
 
   @Override
   public synchronized void stop() {
     logger.info("syslog sink {} stopping...", getName());
+
+    // close SyslogWriter
+    if (syslogWriter != null)
+      syslogWriter.close();
+    sinkCounter.incrementConnectionClosedCount();
+
+    // flume sink stop
+    sinkCounter.stop();
     super.stop();
-    counter.stop();
-    syslog.close();
+
     logger.info("syslog sink {} stopped", getName());
   }
 
   @Override
-  public Status process() throws EventDeliveryException {
+  public Status process()
+  throws EventDeliveryException {
     Channel channel = getChannel();
-    Transaction transaction = channel.getTransaction();
+    Transaction txn = channel.getTransaction();
     Event event = null;
     Status result = Status.READY;
+    txn.begin();
 
     try {
-      transaction.begin();
-      int attemptCounter = 0;
-      for (int i = 0; i < batchSize; i++) {
+      long i = 0;
+      for (; i < batchSize; i++) {
         event = channel.take();
-        if (event != null) {
-          LoggingEvent loggingEvent = new LoggingEvent("syslog",
-              null, null, event.getBody(), null);
+        if (event == null) {
+          // No events found, request back-off semantics from runner
+          result = Status.BACKOFF;
+          if (i == 0) {
+            sinkCounter.incrementBatchEmptyCount();
+          } else {
+            sinkCounter.incrementBatchUnderflowCount();
+          }
+          break;
+        } else {
+          sinkCounter.incrementEventDrainAttemptCount();
+          switch (mode) {
+            case COPY:
+              syslogWriter.write(event.getBody());
+            case RELAY:
+              syslogWriter.relay(false, facility, severity,
+                  Calendar.getInstance().getTime(), host, event.getBody());
+            case FORCE_RELAY:
+              syslogWriter.relay(true, facility, severity,
+                  Calendar.getInstance().getTime(), host, event.getBody());
+          }
         }
       }
+      if (i == batchSize) {
+        sinkCounter.incrementBatchCompleteCount();
+      }
+      sinkCounter.addToEventDrainAttemptCount(i);
+
+      txn.commit();
+      sinkCounter.addToEventDrainSuccessCount(i);
+    } catch (IOException e) {
+      txn.rollback();
+      throw new EventDeliveryException("Failed to process transaction due to " +
+          "IO error", e);
+    } finally {
+      txn.close();
     }
+
+    return result;
   }
 }
